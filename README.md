@@ -3,6 +3,8 @@
 
 A fast-paced line‑drawing arcade inspired by Qix/JezzBall: carve off the playfield, trap enemies in the smallest region you slice, and clear levels. Includes lives, scoring, bosses, bonuses, mobile controls, music, and a persistent leaderboard (server‑side JSON).
 
+Example: [leonov.pp.ua](https://leonov.pp.ua)
+
 ---
 
 ## Table of Contents
