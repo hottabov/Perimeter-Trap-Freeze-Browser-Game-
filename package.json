@@ -1,0 +1,21 @@
+{
+  "name": "perimeter-game",
+  "version": "1.0.0",
+  "description": "Perimeter trap & freeze arcade game",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "NODE_ENV=development node server/server.js",
+    "pm2:start": "pm2 start server/server.js --name perimeter-game",
+    "pm2:stop": "pm2 stop perimeter-game",
+    "pm2:restart": "pm2 restart perimeter-game",
+    "pm2:logs": "pm2 logs perimeter-game",
+    "backup": "cp server/scores.json server/scores.backup.$(date +%Y%m%d_%H%M%S).json"
+  },
+  "keywords": ["game", "arcade", "perimeter", "canvas"],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

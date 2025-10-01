@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Perimeter – Trap & Freeze</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="frame">
+    <div class="legend">
+      <span class="pill"><span class="dot hero"></span>Hero</span>
+      <span class="pill"><span class="dot enemy"></span>Enemy</span>
+      <span class="pill"><span class="dot frozen"></span>Frozen</span>
+      <span class="pill"><span class="dot tail"></span>Tail</span>
+    </div>
+
+    <div class="lives" id="lives">❤️❤️❤️</div>
+
+    <div class="score" id="score">Score 0</div>
+
+    <canvas id="board"></canvas>
+
+    <div class="hud">
+      <div class="left">
+        <span class="tag">Level <span id="level">1</span></span>
+        <span class="tag">Enemies <span id="enemies">—</span></span>
+        <span class="tag">Frozen <span id="captured">0%</span></span>
+        <span class="tag">Boss <span id="boss">—</span></span>
+      </div>
+      <div class="right">
+        <span class="k kbd">P</span>
+        <button class="btn" id="reset">Restart</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div id="banner" class="card hide">
+        <div class="title" id="banner-title">Paused</div>
+        <div class="subtitle" id="banner-sub">Press any arrow/WASD to play</div>
+        <div class="row">
+          <button class="btn" id="banner-btn">Continue</button>
+        </div>
+      </div>
+      <canvas id="fx" class="fx"></canvas>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
