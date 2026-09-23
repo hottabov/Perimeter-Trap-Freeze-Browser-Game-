@@ -65,7 +65,7 @@ export const ICE_FRAG = /* glsl */`
 uniform vec3 uBase; uniform vec3 uTop; uniform vec3 uDeep; uniform vec3 uEdge; uniform vec3 uRim; uniform vec3 uFlash;
 uniform float uEdgeW; uniform float uEdgeI; uniform float uRimP; uniform float uRimI; uniform float uAlpha;
 uniform float uSpark; uniform float uTime; uniform float uFlashDecay; uniform vec3 uSunDir; uniform float uLightK;
-uniform float uEdgeDark; uniform float uContour; uniform float uTileI; uniform float uCap;
+uniform float uEdgeDark; uniform float uContour; uniform float uTileI; uniform float uCap; uniform float uHarden;
 varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack; varying float vOpen;
 ${NOISE}
 ${LIGHTS}
@@ -103,7 +103,7 @@ void main(){
   col *= 1. - uEdgeDark * tileEdge;
   col += uEdge * tileEdge * uEdgeI;
   // bright outline only where the frozen region meets open field
-  if (vOpen > 0.5) {
+  if (mod(vOpen, 16.) > 0.5) {
     float d = 1.;
     if (bit(vOpen, 1.) > 0.5) d = min(d, vL.x + 0.5);
     if (bit(vOpen, 2.) > 0.5) d = min(d, 0.5 - vL.x);
@@ -114,6 +114,11 @@ void main(){
     col += uEdge * c * uContour;
   }
   col += pointLights(vW, N, uLightK) * (0.35 + 0.35 * top);
+  // player ice: a glint sweeps over it the moment it sets hard (enemies can't break it after that)
+  if (uHarden > 0. && vOpen >= 15.5) {
+    float g = exp(-abs(vAge - uHarden - (vW.x + vW.z) * 6.) / 90.);
+    col += uEdge * g * (0.5 + 0.8 * top);
+  }
 #ifdef SPARKLE
   vec3 q = floor(vW * 5.);
   float hs = hash13(q);
@@ -178,10 +183,12 @@ void main(){ vec4 wp = modelMatrix * vec4(position, 1.); vW = wp.xyz; vUv = uv; 
 
 const FLOOR_HEAD = /* glsl */`
 uniform float uTime; uniform vec2 uField; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform float uLightK;
+uniform sampler2D uMask; uniform float uPad;
 varying vec3 vW; varying vec2 vUv;
 ${NOISE}
 ${LIGHTS}
-float fieldMask(vec2 p){ vec2 d = abs(p) - uField*0.5; return 1. - smoothstep(0., 6., max(d.x, d.y)); }
+// 1 on the arena (any shape), fading to 0 a few cells outside it
+float fieldMask(vec2 p){ return texture2D(uMask, (p + uField * 0.5 + uPad) / (uField + 2. * uPad)).r; }
 `;
 
 export const FLOOR_FRAG = {
@@ -342,6 +349,88 @@ void main(){
   gl_FragColor = vec4(col, 1.);
 }`;
 
+// Desert: wind-carved dunes with sunlit and shaded faces, ripples and blowing sand
+FLOOR_FRAG.desert = FLOOR_HEAD + /* glsl */`
+float duneH(vec2 p){ return sin(p.x * 0.03 + p.y * 0.06 + fbm(p * 0.02 + 3.) * 4.5); }
+void main(){
+  vec2 p = vW.xz; float t = uTime;
+  float m = fieldMask(p);
+  float h = duneH(p);
+  float slope = (duneH(p + vec2(1.5, 0.)) - h) / 1.5;
+  float crest = smoothstep(0.75, 1., h);
+  vec3 col = mix(uA, uB, 0.45 + 0.3 * h);
+  col *= 0.78 + 0.4 * clamp(0.5 + slope * 8., 0., 1.);
+  float rip = sin(p.x * 1.5 + p.y * 0.8 + fbm(p * 0.18) * 6.);
+  col *= 0.93 + 0.07 * rip;
+  col += uC * crest * 0.06;
+  float streak = fbm(vec2(p.x * 0.07 - t * 0.8, p.y * 0.35 + t * 0.1));
+  col += uB * smoothstep(0.62, 0.85, streak) * 0.1;
+  col *= 0.94 + 0.12 * hash12(floor(p * 7.));
+  col += pointLights(vW, vec3(0., 1., 0.), uLightK) * 0.35;
+  col *= mix(0.42, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+// Hell: basalt plates drifting on a lava sea; lava rivers outside the arena
+FLOOR_FRAG.hell = FLOOR_HEAD + /* glsl */`
+vec2 hash22(vec2 p){ return vec2(hash12(p), hash12(p + 19.19)); }
+void main(){
+  vec2 p = vW.xz; float t = uTime;
+  float m = fieldMask(p);
+  vec2 g = p * mix(0.13, 0.085, m), ig = floor(g), fg = fract(g);
+  float d1 = 9., d2 = 9.;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 o = vec2(float(x), float(y));
+    vec2 rr = o + 0.5 + 0.38 * sin(t * 0.12 + 6.2831 * hash22(ig + o)) - fg;
+    float d = dot(rr, rr);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  float edge = sqrt(d2) - sqrt(d1);
+  float crack = 1. - smoothstep(0., mix(0.1, 0.05, m), edge);
+  float flow = fbm(p * 0.05 + vec2(t * 0.03, -t * 0.02));
+  float heat = 0.65 + 0.35 * sin(t * 1.4 + flow * 9.);
+  vec3 lava = mix(uB, uC, smoothstep(0.45, 0.8, flow));
+  vec3 crust = uA * (0.5 + 0.9 * fbm(p * 0.7));
+  float glow = mix(1.7, 0.32, m);
+  vec3 col = mix(crust, lava * heat * glow, crack);
+  col += uB * 0.2 * (1. - smoothstep(0., 0.3, edge)) * heat * glow;
+  float river = 1. - smoothstep(0., 0.07, abs(fbm(p * 0.018 + 5.) - 0.5));
+  col = mix(col, lava * (1.4 + 0.4 * heat), river * (1. - m));
+  col += pointLights(vW, vec3(0., 1., 0.), uLightK) * 0.3;
+  col *= mix(0.6, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+// Heaven: warm mist over slowly turning sacred geometry, with light rays
+FLOOR_FRAG.heaven = FLOOR_HEAD + /* glsl */`
+void main(){
+  vec2 p = vW.xz; float t = uTime;
+  float m = fieldMask(p);
+  vec2 q = p * 0.02 + vec2(t * 0.004, t * 0.002);
+  float mist = fbm(q) * 0.7 + fbm(q * 2.5 + 3.) * 0.3;
+  vec3 col = mix(uA, uB, smoothstep(0.25, 0.75, mist));
+  float r = length(p), a = atan(p.y, p.x);
+  float dr = abs(fract(r / 9. - t * 0.02 + 0.5) - 0.5) * 9.;
+  float ring = 1. - smoothstep(0.06, 0.3, dr);
+  float seg = 6.2831 / 24.;
+  float da = abs(fract(a / seg + t * 0.006 + 0.5) - 0.5) * seg * r;
+  float spoke = (1. - smoothstep(0.05, 0.22, da)) * smoothstep(9., 16., r);
+  // petals: overlapping circles of a flower-of-life rosette in the centre
+  float petal = 0.;
+  for (int k = 0; k < 6; k++) {
+    float ang = float(k) * 1.0472 + t * 0.02;
+    vec2 c = vec2(cos(ang), sin(ang)) * 9.;
+    petal = max(petal, 1. - smoothstep(0.08, 0.3, abs(length(p - c) - 9.)));
+  }
+  float geo = (ring * 0.6 + spoke * 0.35 + petal * 0.5) * smoothstep(90., 25., r);
+  col += uC * geo * 0.32;
+  float ray = pow(0.5 + 0.5 * sin(dot(p, vec2(0.94, 0.34)) * 0.07 + fbm(vec2(dot(p, vec2(-0.34, 0.94)) * 0.015, t * 0.05)) * 5.), 5.);
+  col += uC * ray * 0.16;
+  col += pointLights(vW, vec3(0., 1., 0.), uLightK) * 0.2;
+  col *= mix(0.8, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
 /* ---------------- ENEMY ORBS ---------------- */
 export const ORB_VERT = /* glsl */`
 varying vec3 vN; varying vec3 vW; varying vec3 vP;
@@ -392,6 +481,18 @@ void main(){
   col = mix(col, iris, smoothstep(0.84, 0.86, d));
   col = mix(col, vec3(0.01), smoothstep(pupilR - 0.006, pupilR, d));
   col += uA * pow(fr, 2.) * 1.2;
+#elif defined(STYLE_MAGMA)
+  // magma ball: dark cooling crust split by glowing, flowing cracks
+  vec3 P = normalize(vP);
+  float n = fbm3(P * 2.6 + vec3(uSeed * 7., uTime * 0.25, 0.));
+  float cr = 1. - smoothstep(0., 0.12, abs(n - 0.5));
+  float cr2 = (1. - smoothstep(0., 0.05, abs(fbm3(P * 5.5 + uSeed * 3. - uTime * 0.2) - 0.5))) * 0.6;
+  float c = max(cr, cr2);
+  float pulse = 0.75 + 0.25 * sin(uTime * 5. + uSeed * 12.);
+  col = uA * (0.25 + 0.5 * fbm3(P * 9.)) + uB * 0.35 * pulse;
+  col = mix(col, uB * 2.2 * pulse, c);
+  col += uCore * pow(c, 3.) * 2.5 * pulse;
+  col += mix(uB, uCore, 0.4) * pow(fr, 1.4) * 2.2;
 #else
   float n = fbm3(normalize(vP) * 2.5 + vec3(uTime * 0.4, uTime * 0.25, uSeed * 5.));
   float veins = smoothstep(0.48, 0.52, n) - smoothstep(0.52, 0.58, n);

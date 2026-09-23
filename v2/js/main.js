@@ -3,6 +3,7 @@ import { Renderer } from './render.js';
 import { Sfx } from './audio.js';
 import { themeForLevel, generateTheme, canonicalTheme, FAMILIES } from './themegen.js';
 import { fetchBoard, submitScore } from './net.js';
+import { SHAPE_NAMES, JOURNEY } from './levels.js';
 
 const $ = (id) => document.getElementById(id);
 const aspect = () => innerWidth / innerHeight;
@@ -12,14 +13,16 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
 };
-const GLYPH = { fire: '❄', neon: '◆', cryo: '◇', cave: '◈', abyss: '◉', sky: '✦' };
+const GLYPH = { fire: '❄', neon: '◆', cryo: '◇', cave: '◈', abyss: '◉', sky: '✦', desert: '☀', hell: '♨', heaven: '✧' };
 const POWER_NAMES = { slow: 'Slow time', haste: 'Haste', shield: 'Shield', life: '+1 life' };
 const NEW_FOES = {
-  1: '<b>Careful:</b> enemies crack the ice every time they hit it. Cracked ice breaks and melts back into open field.',
+  1: '<b>Nine worlds.</b> Freeze 90% of each to reach the Golden Gates. <br><b>Careful:</b> enemies smash fresh ice. It sets hard after 12 seconds.',
   2: '<b>New: Sparx.</b> It crawls along the ice edge, so keep moving. Freeze the stretch of edge it is crawling on to shatter it.',
-  3: '<b>New: Hunter.</b> It turns toward you while you are drawing a line.',
+  3: '<b>New: Hunter.</b> It turns toward you while you are drawing a line. <br><b>From now on the arena changes shape.</b>',
   4: '<b>New: Splitter.</b> Wait too long and it splits in two.',
-  5: '<b>Boss.</b> Trap it once for every ring. It breaks out smaller and angrier each time.',
+  5: '<b>Boss.</b> Trap it once for every ring. It breaks out smaller and angrier each time. Beat it for an extra life.',
+  9: '<b>Final world.</b> The Seraph guards the gates. Clear Heaven to finish the journey.',
+  10: '<b>Endless.</b> The journey is done. From here every world is new, and every one is faster.',
 };
 
 const game = new Game();
@@ -72,7 +75,8 @@ function showIntro() {
   const el = $('intro');
   const S = game.spec;
   const foe = NEW_FOES[game.level] ? `<div class="newfoe">${NEW_FOES[game.level]}</div>` : '';
-  el.innerHTML = `<div class="eyebrow">Level ${pad2(game.level)}${S.boss ? ' · Boss' : ''}</div>
+  const arena = S.shape && S.shape !== 'rect' ? ` · ${SHAPE_NAMES[S.shape]}` : '';
+  el.innerHTML = `<div class="eyebrow">Level ${pad2(game.level)}${S.boss ? ' · Boss' : ''}${arena}</div>
     <div class="name display">${theme.world}</div>
     <div class="goal">Freeze ${S.goal}% of the field or shatter every enemy</div>${foe}`;
   el.hidden = false; el.classList.remove('out'); void el.offsetWidth; el.classList.add('show');
@@ -143,8 +147,8 @@ addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const dir = KEYS[e.code];
   if (dir) { e.preventDefault(); direction(dir); return; }
-  // hidden shortcuts: 1-6 jump to a new world of that family, G to a random one
-  const dn = /^Digit([1-6])$/.exec(e.code);
+  // hidden shortcuts: 1-9 jump to a new world of that family, G to a random one
+  const dn = /^Digit([1-9])$/.exec(e.code);
   if (dn) { sfx.unlock(); if (current === 'title') applyTheme(canonicalTheme(FAMILIES[dn[1] - 1])); else newWorld(FAMILIES[dn[1] - 1]); return; }
   if (e.code === 'KeyG') { sfx.unlock(); if (current === 'title') titleTheme(); else newWorld('random'); return; }
   if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); return; }
@@ -182,7 +186,7 @@ function updateHud(force) {
   shownScore += (game.score - shownScore) * 0.15;
   if (Math.abs(game.score - shownScore) < 1) shownScore = game.score;
   $('score').textContent = fmt(shownScore);
-  $('lvl').textContent = pad2(game.level);
+  $('lvl').textContent = game.level <= JOURNEY ? `${pad2(game.level)} / ${pad2(JOURNEY)}` : `${pad2(game.level)} · endless`;
   if ((force || lastLives !== game.lives) && theme) {
     lastLives = game.lives;
     $('lives').textContent = GLYPH[theme.family].repeat(Math.max(0, Math.min(8, game.lives))) || '—';
@@ -261,7 +265,13 @@ game.on('shieldBreak', () => { sfx.shieldBreak(); callout('Shield broke', 'small
 game.on('clear', (d) => {
   sfx.clear();
   setTimeout(() => {
-    $('clear-eyebrow').textContent = `Level ${pad2(d.level)} cleared`;
+    $('clear-eyebrow').textContent = d.journeyDone ? 'Journey complete' : `Level ${pad2(d.level)} cleared`;
+    $('next').textContent = d.journeyDone ? 'Continue · Endless' : 'Next level';
+    if (d.journeyDone) {
+      const bestStars = Math.max(d.runStars, +store.get('perimeter.journeyStars', 0) || 0);
+      store.set('perimeter.journeyStars', bestStars);
+      callout('Journey complete');
+    }
     $('clear-world').textContent = theme.world;
     $('clear-stars').innerHTML = [0, 1, 2].map(k => `<span class="${k < d.stars ? 'on' : ''}" style="animation-delay:${0.15 + k * 0.18}s">★</span>`).join('');
     const b = d.breakdown, mm = Math.floor(d.seconds / 60), ss = pad2(Math.floor(d.seconds % 60));
@@ -270,6 +280,7 @@ game.on('clear', (d) => {
       <dt>Time ${mm}:${ss} (par ${Math.floor(game.spec.par / 60)}:${pad2(game.spec.par % 60)})</dt><dd>+${fmt(b.time)}</dd>
       <dt>Frozen ${d.pct.toFixed(0)}% (goal ${game.spec.goal}%)</dt><dd>+${fmt(b.overGoal)}</dd>
       <dt>No lives lost</dt><dd>+${fmt(b.lives)}</dd>
+      ${d.journeyDone ? `<dt>Stars across the journey</dt><dd>${d.runStars} / ${JOURNEY * 3} ★</dd>` : ''}
       <dt class="total">Score</dt><dd class="total">${fmt(game.score)}</dd>`;
     show('clear'); screenShownAt = performance.now();
   }, Math.max(1500, d.duration + 700));
@@ -278,7 +289,7 @@ game.on('gameover', async (d) => {
   const best = Math.max(d.score, +store.get('perimeter.best', 0) || 0);
   store.set('perimeter.best', best);
   $('over-score').textContent = fmt(d.score);
-  $('over-level').textContent = d.level;
+  $('over-level').textContent = d.level <= JOURNEY ? `${d.level} / ${JOURNEY}` : d.level;
   $('over-best').textContent = fmt(best);
   $('name').value = store.get('perimeter.name', '');
   $('save').disabled = false; $('save').textContent = 'Save score';
@@ -307,7 +318,8 @@ function renderBoard({ list, online }, you) {
 
 function renderTitleBest() {
   const best = +store.get('perimeter.best', 0) || 0;
-  $('title-best').textContent = best ? `Best ${fmt(best)}` : '';
+  const js = +store.get('perimeter.journeyStars', 0) || 0;
+  $('title-best').textContent = [best ? `Best ${fmt(best)}` : '', js ? `Journey complete · ${js} ★` : ''].filter(Boolean).join(' · ');
 }
 
 /* ---------------- boot ---------------- */
@@ -328,6 +340,9 @@ function frame(now) {
   const gameDt = realDt * view.timeScale(now);
   game.update(gameDt);
   view.update(realDt, gameDt);
+  const st = game.state;
+  sfx.music.setMode(st === 'paused' ? 'pause' : st === 'clear' ? 'clear' : st === 'gameover' ? 'over' : st === 'title' ? 'title' : 'play');
+  sfx.music.setCarving(st === 'playing' && game.hero.carving);
   updateHud(false);
   requestAnimationFrame(frame);
 }

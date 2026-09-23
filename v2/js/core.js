@@ -1,5 +1,5 @@
 // Perimeter v2 — game logic (renderer-agnostic).
-import { levelSpec, layoutRects, starsFor } from './levels.js';
+import { levelSpec, layoutRects, shapeMask, starsFor, JOURNEY, HARDEN_MS } from './levels.js';
 import { rng } from './themegen.js';
 
 export const ACTIVE = 0, SOLID = 1, TRAIL = 2;
@@ -29,6 +29,7 @@ export class Game {
     this.streak = 0;
     this.runSeed = 1;
     this.freezeDirty = true; this.trailDirty = true;
+    this.hardenMs = 0;
     this.setupGrid(LONG_SIDE, 64);
     this.resetField(false);
     this.spawnHero();
@@ -53,7 +54,8 @@ export class Game {
     this.trailAt = new Float32Array(w * h).fill(-1);
     this.iceHp = new Uint8Array(w * h);        // hits left before a frozen cell breaks
     this.iceDmg = new Float32Array(w * h);     // 0..1 crack amount, read by the renderer
-    this.perm = new Uint8Array(w * h);         // outer border: unbreakable
+    this.perm = new Uint8Array(w * h);         // arena wall and void: unbreakable
+    this.shape = new Uint8Array(w * h);        // 0 arena, 1 arena wall, 2 void outside the arena
     this.mine = new Uint8Array(w * h);         // frozen by the player: counts toward the goal
     this.emit('grid', { w, h });
   }
@@ -78,25 +80,38 @@ export class Game {
     return false;
   }
 
-  resetField(wave = true, layout = 'open', seed = 1) {
+  resetField(wave = true, layout = 'open', seed = 1, shape = 'rect') {
     const { W, H } = this;
     this.cells.fill(ACTIVE);
     this.freezeAt.fill(NEVER);
     this.trailAt.fill(-1);
-    this.iceHp.fill(0); this.iceDmg.fill(0); this.perm.fill(0); this.mine.fill(0);
+    this.iceHp.fill(0); this.iceDmg.fill(0); this.perm.fill(0); this.mine.fill(0); this.shape.fill(0);
     this.iceMax = 2; // a direct hit (2) breaks a cell; glancing hits on neighbours (1) crack it
-    const ring = [];
-    for (let x = 0; x < W; x++) ring.push(this.idx(x, 0));
-    for (let y = 1; y < H; y++) ring.push(this.idx(W - 1, y));
-    for (let x = W - 2; x >= 0; x--) ring.push(this.idx(x, H - 1));
-    for (let y = H - 2; y >= 1; y--) ring.push(this.idx(0, y));
-    const start = ring.indexOf(this.idx(Math.floor(W / 2), H - 1));
-    const n = ring.length;
-    ring.forEach((i, k) => {
-      this.cells[i] = SOLID;
-      const d = Math.min(Math.abs(k - start), n - Math.abs(k - start));
-      this.freezeAt[i] = wave ? this.t + (d / (n / 2)) * 900 : -1e6;
-    });
+    this.shapeKind = shape;
+    // Arena: everything outside the shape is wall; the wall band next to the field is the frame
+    const inside = shapeMask(shape, W, H, seed);
+    const frame = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (inside[i]) continue;
+      this.cells[i] = SOLID; this.perm[i] = 1;
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H && inside[ny * W + nx]) { near = true; break; }
+      }
+      this.shape[i] = near ? 1 : 2;
+      if (near) frame.push(i); else this.freezeAt[i] = -1e6;
+    }
+    // The frame freezes in a wave that runs along the wall from the hero's start
+    const fmask = new Uint8Array(W * H);
+    for (const i of frame) fmask[i] = 1;
+    const start = this.frameStart(frame);
+    const { dist, maxd } = this.waveDistances([start], fmask);
+    for (const i of frame) {
+      const d = dist[i] >= 0 ? dist[i] / Math.max(1, maxd) : 1;
+      this.freezeAt[i] = wave ? this.t + d * 900 : -1e6;
+    }
     // Obstacles
     const rects = layoutRects(layout, W, H, seed);
     rects.forEach(([x0, y0, x1, y1], k) => {
@@ -116,16 +131,27 @@ export class Game {
     }
     let open = 0;
     for (let i = 0; i < this.cells.length; i++) { if (this.cells[i] === ACTIVE) open++; else this.iceHp[i] = this.iceMax + 1; }
-    for (const i of ring) this.perm[i] = 1; // obstacles can be smashed, the frame cannot
     this.playable = open;
     this.frozenCount = 0;
     this.freezeDirty = this.trailDirty = this.crackDirty = true;
     this.emit('field', { wave });
   }
 
+  // Wall cell closest to the bottom middle: where the hero starts
+  frameStart(frame) {
+    const cx = this.W / 2, cy = this.H - 1;
+    let best = frame[0], bd = 1e9;
+    for (const i of frame) {
+      const x = i % this.W, y = (i / this.W) | 0;
+      const d = Math.abs(x - cx) + Math.abs(y - cy) * 1.5;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
   /* ---------------- flow ---------------- */
   newGame(aspect, seed) {
-    this.level = 1; this.score = 0; this.lives = 3; this.streak = 0;
+    this.level = 1; this.score = 0; this.lives = 3; this.streak = 0; this.runStars = 0;
     this.runSeed = seed || ((Math.random() * 1e9) | 0);
     this.startLevel(aspect);
   }
@@ -134,8 +160,9 @@ export class Game {
     const g = Game.gridFor(aspect || 16 / 9);
     if (g.w !== this.W || g.h !== this.H) this.setupGrid(g.w, g.h);
     this.spec = levelSpec(this.level);
+    this.hardenMs = HARDEN_MS;
     this.rand = rng(this.runSeed + this.level * 1013);
-    this.resetField(true, this.spec.layout, this.runSeed + this.level);
+    this.resetField(true, this.spec.layout, this.runSeed + this.level, this.spec.shape);
     this.spawnHero();
     this.effects = { slowUntil: 0, hasteUntil: 0, shield: false };
     this.powerup = null;
@@ -185,8 +212,9 @@ export class Game {
   }
 
   nextLevel(aspect) {
+    // beating a boss is worth a life
+    if (this.spec && this.spec.boss) { this.lives++; this.emit('extraLife', {}); }
     this.level++;
-    if (this.level % 5 === 1 && this.level > 1) { this.lives++; this.emit('extraLife', {}); }
     this.startLevel(aspect);
   }
 
@@ -200,7 +228,12 @@ export class Game {
 
   /* ---------------- hero ---------------- */
   spawnHero() {
-    const x = Math.floor(this.W / 2), y = this.H - 1;
+    let x = Math.floor(this.W / 2), y = this.H - 1;
+    if (!this.isPerimeter(x, y)) {
+      const frame = [];
+      for (let i = 0; i < this.shape.length; i++) if (this.shape[i] === 1) frame.push(i);
+      if (frame.length) { const i = this.frameStart(frame); x = i % this.W; y = (i / this.W) | 0; }
+    }
     this.hero = {
       x, y, px: x, py: y, dir: 'left', next: null, carving: false,
       cool: HERO_STEP_MS, stepMs: HERO_STEP_MS, trail: [], startX: x, startY: y,
@@ -467,7 +500,8 @@ export class Game {
     const bonus = breakdown.clear + breakdown.time + breakdown.overGoal + breakdown.lives;
     this.score += bonus;
     const stars = starsFor(this.deaths, secs, this.spec.par);
-    this.emit('clear', { level: this.level, bonus, breakdown, stars, seconds: secs, pct: this.capturedPct, remaining: n, duration: maxd * per });
+    this.runStars = (this.runStars || 0) + stars;
+    this.emit('clear', { journeyDone: this.level === JOURNEY, runStars: this.runStars, level: this.level, bonus, breakdown, stars, seconds: secs, pct: this.capturedPct, remaining: n, duration: maxd * per });
   }
 
   /* ---------------- enemies ---------------- */
@@ -497,6 +531,10 @@ export class Game {
         x = 6 + R() * (this.W - 12); y = 6 + R() * (this.H - 12);
         const d = Math.hypot(x - h.x, y - h.y);
         if (d > Math.min(this.W, this.H) * 0.4 && this.areaFree(x, y, cfg.r + 1) && !this.enemies.some(o => Math.hypot(o.x - x, o.y - y) < 8)) break;
+      }
+      if (!this.areaFree(x, y, cfg.r)) {
+        const p = this.nearestFree(Math.floor(x), Math.floor(y), cfg.r + 0.5, 60);
+        if (p) { x = p[0]; y = p[1]; }
       }
     }
     let a = R() * Math.PI * 2;
@@ -608,6 +646,7 @@ export class Game {
       if (d > R) continue;
       const i = this.idx(x, y);
       if (this.cells[i] !== SOLID || this.perm[i] || this.t < this.freezeAt[i] + 400) continue;
+      if (this.hardenMs && this.mine[i] && this.t > this.freezeAt[i] + this.hardenMs) continue; // set ice holds
       this.iceHp[i] = Math.max(0, this.iceHp[i] - (d <= core ? 2 : 1));
       if (this.iceHp[i] === 0) {
         if (this.edgeOf(x, y)) broken.push(i);

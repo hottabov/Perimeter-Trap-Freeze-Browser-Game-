@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#04060b">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Cinzel:wght@500;700&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Mono:wght@400;600&family=Major+Mono+Display&family=Marcellus&family=Monoton&family=Outfit:wght@400;600;800&family=Pirata+One&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Chakra+Petch:wght@500;700&family=Cinzel:wght@500;700&family=Cinzel+Decorative:wght@700&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Mono:wght@400;600&family=Major+Mono+Display&family=Marcellus&family=Metal+Mania&family=Monoton&family=Outfit:wght@400;600;800&family=Pirata+One&display=swap">
 <style>
   :root {
     color-scheme: dark;
@@ -40,6 +40,19 @@
     --display: "Marcellus", "Cormorant Garamond", Georgia, serif;
     --title-size: clamp(54px, 11vw, 150px); --title-track: 0.03em; --title-case: none; --display-style: normal; --display-weight: 400;
   }
+  :root[data-family="desert"] {
+    --display: "Aref Ruqaa", "Cinzel", Georgia, serif;
+    --title-size: clamp(60px, 12vw, 160px); --title-track: 0.01em; --title-case: none; --display-style: normal; --display-weight: 700;
+  }
+  :root[data-family="hell"] {
+    --display: "Metal Mania", "Pirata One", Georgia, serif;
+    --title-size: clamp(60px, 12.5vw, 164px); --title-track: 0.02em; --title-case: none; --display-style: normal; --display-weight: 400;
+  }
+  :root[data-family="heaven"] {
+    color-scheme: light;
+    --display: "Cinzel Decorative", "Cinzel", Georgia, serif;
+    --title-size: clamp(46px, 9.5vw, 126px); --title-track: 0.03em; --title-case: none; --display-style: normal; --display-weight: 700;
+  }
   html, body { height: 100%; margin: 0; background: #02040a; overflow: hidden; }
   body { color: var(--ink); font-family: var(--ui); -webkit-font-smoothing: antialiased; touch-action: none; user-select: none; -webkit-user-select: none; transition: color .6s; }
   #stage { position: fixed; inset: 0; }
@@ -52,6 +65,9 @@
   :root[data-family="cave"] .display { text-shadow: 0 2px 0 rgba(0, 0, 0, .6), 0 0 26px var(--accent); }
   :root[data-family="abyss"] .display { text-shadow: 0 0 18px var(--warm), 0 0 60px color-mix(in srgb, var(--warm) 60%, transparent); }
   :root[data-family="sky"] .display { text-shadow: 0 0 22px color-mix(in srgb, var(--warm) 70%, transparent), 0 1px 0 rgba(255, 255, 255, .5); }
+  :root[data-family="desert"] .display { text-shadow: 0 2px 0 rgba(60, 30, 0, .55), 0 0 24px color-mix(in srgb, var(--warm) 55%, transparent); }
+  :root[data-family="hell"] .display { text-shadow: 0 0 12px var(--warm), 0 0 36px var(--warm), 0 2px 0 #000; }
+  :root[data-family="heaven"] .display { text-shadow: 0 0 18px rgba(255, 255, 255, .9), 0 0 42px color-mix(in srgb, var(--warm) 45%, transparent); }
 
   /* ---------- HUD ---------- */
   .hud { position: fixed; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -103,6 +119,10 @@
   :root[data-family="cryo"] h1 { color: color-mix(in srgb, var(--accent) 25%, white); text-shadow: -2px 0 rgba(255, 60, 120, .55), 2px 0 rgba(60, 200, 255, .55), 0 0 30px var(--accent); }
   :root[data-family="cave"] h1 { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 30%, white) 0%, var(--accent) 55%, color-mix(in srgb, var(--accent) 45%, #000) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, .55)) drop-shadow(0 0 30px color-mix(in srgb, var(--accent) 45%, transparent)); }
   :root[data-family="abyss"] h1 { color: color-mix(in srgb, var(--warm) 35%, #fff4ee); text-shadow: 0 0 10px var(--warm), 0 0 40px var(--warm), 0 0 110px color-mix(in srgb, var(--warm) 70%, #000); }
+  :root[data-family="desert"] h1 { background: linear-gradient(180deg, #fff3d6 10%, var(--warm) 60%, color-mix(in srgb, var(--warm) 55%, #3a1a00) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 3px 0 rgba(50, 24, 0, .6)) drop-shadow(0 0 30px color-mix(in srgb, var(--accent) 35%, transparent)); }
+  :root[data-family="hell"] h1 { background: linear-gradient(180deg, #fff6c0 0%, #ffb020 35%, var(--warm) 65%, #5a0800 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 14px var(--warm)) drop-shadow(0 0 50px color-mix(in srgb, var(--warm) 70%, transparent)); }
+  :root[data-family="heaven"] h1 { background: linear-gradient(180deg, #ffffff 0%, #ffe9a8 40%, var(--warm) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 0 rgba(120, 80, 0, .45)) drop-shadow(0 0 30px rgba(255, 255, 255, .95)); }
+  :root[data-family="heaven"] .cta { color: #fffaf0; }
   :root[data-family="sky"] h1 { background: linear-gradient(180deg, #ffffff 15%, var(--warm) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 26px color-mix(in srgb, var(--warm) 55%, transparent)); }
   .sub { margin: 0; font-size: 15px; letter-spacing: .4em; text-transform: uppercase; color: var(--warm); }
   .lead { margin: 4px 0 0; font-size: 16px; color: var(--muted); max-width: 48ch; line-height: 1.5; text-wrap: balance; }
@@ -219,7 +239,7 @@
   <div class="panel">
     <h1>Perimeter</h1>
     <p class="sub">Trap &amp; Freeze</p>
-    <p class="lead">Cut across the field. Close your line and the smaller side turns to ice. Anything trapped inside shatters. Freeze enough of the field or break every enemy to move on.</p>
+    <p class="lead">Cut across the field. Close your line and the smaller side turns to ice. Anything trapped inside shatters. Freeze 90% of each world, or break every enemy, and cross nine worlds to the Golden Gates.</p>
     <button class="cta" id="play">Play</button>
     <div class="best" id="title-best"></div>
     <div class="keys desk"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or WASD to move · <kbd>P</kbd> pause · <kbd>M</kbd> sound</div>

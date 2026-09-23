@@ -143,6 +143,78 @@ export const THEMES = {
     hudGlyph: '✦',
     audio: { root: 50, scale: [0, 2, 4, 7, 9], wave: 'sine', drone: 'triangle', cutoff: 1400, shimmer: 1.6, chimes: true },
   },
+
+  // Desert: wind-carved dunes, sandstone blocks with turquoise glow, sun-spirit enemies
+  desert: {
+    key: 'desert',
+    name: 'Desert',
+    clear: '#1a0f07',
+    floor: { kind: 'desert', a: '#5a3818', b: '#d9a866', c: '#fff0c8', lightK: 0.03 },
+    ice: {
+      base: '#a8703c', top: '#ecc88e', deep: '#4a2a12', edge: '#6ff2e0', rim: '#ffd9a0', flash: [0.6, 2.2, 2.0], edgeDark: 0.32,
+      edgeW: 0.08, edgeI: 0.12, rimP: 2.4, rimI: 0.25, alpha: 1, spark: 0, flashDecay: 420, lightK: 0.06,
+      hMin: 0.7, hMax: 2.3, gap: 0.96, facets: true, sparkle: false, holo: false, grow: 700, contour: 1.5, tileI: 1, cap: 0,
+    },
+    trail: { color: [0.3, 1.8, 1.6], hot: [1.4, 2.2, 2.0] },
+    hero: { color: [2.0, 4.2, 3.8], light: '#7ff5e4', lightI: 1.2, spark: [0.8, 3.0, 2.6], kind: 'frost' },
+    enemy: { style: 'PLASMA', a: '#14286e', b: '#5a1488', core: '#9ffcff', light: '#5a8cff', lightI: 2.6, emit: 'sparks', ring: true },
+    boss: { style: 'PLASMA', a: '#5a0a1a', b: '#1a0a4a', core: '#ffd0a0', light: '#ff5a3a', lightI: 4.5, emit: 'sparks', ring: true },
+    iceOrb: '#9ff8ec',
+    shards: { color: '#e8c48a', emissive: '#3fd8c8', emissiveI: 0.6, opacity: 0.95, alt: '#ffc23a' },
+    burst: { kill: [3.2, 2.0, 0.5], killAlt: [0.6, 2.8, 2.6], steam: false, death: [3.2, 1.2, 0.3], capture: [0.8, 2.8, 2.6] },
+    post: { bloom: [0.6, 0.45, 0.95], vignette: 0.95, grain: 0.03, aberr: 0.0, scan: 0, tint: [1.05, 1.0, 0.94], exposure: 1.0 },
+    sun: [-0.5, 0.8, 0.4], ambient: '#6a4a30', dir: '#ffe2b0',
+    hudGlyph: '☀',
+    audio: { root: 38, scale: [0, 1, 4, 5, 7, 8, 10], wave: 'triangle', drone: 'sawtooth', cutoff: 420, shimmer: 0.8, wind: true },
+  },
+
+  // Hell: basalt plates drifting on lava, obsidian ice with molten seams, magma-ball enemies
+  hell: {
+    key: 'hell',
+    name: 'Inferno',
+    clear: '#0a0200',
+    floor: { kind: 'hell', a: '#1c0c07', b: '#ff3a00', c: '#ffc040', lightK: 0.03 },
+    ice: {
+      base: '#1c0f0c', top: '#3a2420', deep: '#060202', edge: '#ff8a2a', rim: '#ff5a10', flash: [2.6, 0.9, 0.2], edgeDark: 0.35,
+      edgeW: 0.06, edgeI: 0.3, rimP: 2.8, rimI: 0.45, alpha: 1, spark: 0, flashDecay: 480, lightK: 0.08,
+      hMin: 1.0, hMax: 2.6, gap: 0.95, facets: true, sparkle: false, holo: false, grow: 800, contour: 2.2, tileI: 0.6, cap: 0.35,
+    },
+    trail: { color: [0.5, 1.5, 2.4], hot: [1.6, 2.2, 2.6] },
+    hero: { color: [2.4, 3.8, 4.4], light: '#9fdcff', lightI: 1.4, spark: [1.0, 2.4, 3.4], kind: 'frost' },
+    enemy: { style: 'MAGMA', a: '#2a0a04', b: '#ff4a00', core: '#ffd040', light: '#ff5010', lightI: 3.4, emit: 'embers', ring: false },
+    boss: { style: 'MAGMA', a: '#1a0402', b: '#ff1a00', core: '#fff08a', light: '#ff3000', lightI: 5.5, emit: 'embers', ring: true },
+    iceOrb: '#9fdcff',
+    shards: { color: '#1c0f0c', emissive: '#ff6a10', emissiveI: 1.4, opacity: 0.95, alt: '#9fdcff' },
+    burst: { kill: [3.6, 1.2, 0.2], killAlt: [0.8, 2.2, 3.6], steam: true, death: [3.6, 0.6, 0.1], capture: [0.8, 2.2, 3.6] },
+    post: { bloom: [0.85, 0.5, 0.85], vignette: 1.2, grain: 0.03, aberr: 0.0015, scan: 0, tint: [1.08, 0.96, 0.9], exposure: 1.0 },
+    sun: [0.2, 1.0, 0.3], ambient: '#3a120a', dir: '#ffb080',
+    hudGlyph: '♨',
+    audio: { root: 31, scale: [0, 1, 4, 5, 6, 8, 11], wave: 'sawtooth', drone: 'sawtooth', cutoff: 320, shimmer: 0.5, inferno: true },
+  },
+
+  // Heaven: radiant marble and gold over sacred geometry, many-eyed seraph enemies
+  heaven: {
+    key: 'heaven',
+    name: 'Heaven',
+    clear: '#e8dcc4',
+    floor: { kind: 'heaven', a: '#7a6a54', b: '#cfc2a6', c: '#ffcf6a', lightK: 0.02 },
+    ice: {
+      base: '#cfc6b6', top: '#fffaf0', deep: '#8a806e', edge: '#ffc44a', rim: '#fff3d6', flash: [2.4, 2.0, 1.0], edgeDark: 0.1,
+      edgeW: 0.06, edgeI: 0.35, rimP: 2.2, rimI: 0.3, alpha: 1, spark: 2.4, flashDecay: 420, lightK: 0.04,
+      hMin: 0.9, hMax: 2.0, gap: 0.94, facets: true, sparkle: true, holo: false, grow: 650, contour: 1.6, tileI: 0.5, cap: 0.45,
+    },
+    trail: { color: [2.2, 1.5, 0.4], hot: [2.6, 2.4, 1.8] },
+    hero: { color: [4.2, 3.6, 2.0], light: '#ffe2a0', lightI: 1.2, spark: [3.2, 2.4, 0.9], kind: 'orb' },
+    enemy: { style: 'EYE', a: '#c8900a', b: '#3a8cff', core: '#fff4e0', light: '#ffd070', lightI: 2.2, emit: 'motes', ring: true, rings: 2 },
+    boss: { style: 'EYE', a: '#ff6a2a', b: '#8a3aff', core: '#fff8ee', light: '#ffb060', lightI: 4, emit: 'motes', ring: true },
+    iceOrb: '#fff2c8',
+    shards: { color: '#fffaf0', emissive: '#ffc44a', emissiveI: 0.5, opacity: 0.95, alt: '#3a8cff' },
+    burst: { kill: [3.4, 2.6, 1.0], killAlt: [1.2, 2.0, 3.4], steam: false, death: [3.2, 0.8, 0.6], capture: [3.2, 2.6, 1.2] },
+    post: { bloom: [0.45, 0.5, 1.2], vignette: 0.45, grain: 0.008, aberr: 0.0, scan: 0, tint: [1.03, 1.0, 0.95], exposure: 0.95 },
+    sun: [-0.2, 1.0, 0.6], ambient: '#b8a88a', dir: '#fff4dc',
+    hudGlyph: '✧',
+    audio: { root: 52, scale: [0, 2, 4, 6, 7, 9, 11], wave: 'sine', drone: 'sine', cutoff: 1600, shimmer: 1.8, choir: true },
+  },
 };
 
 // Region-contour and top-cap settings for the original three styles
@@ -150,4 +222,4 @@ Object.assign(THEMES.fire.ice, { contour: 0.55, tileI: 1, cap: 0 });
 Object.assign(THEMES.neon.ice, { contour: 2.4, tileI: 0.1, cap: 1, gap: 1.0, top: '#1c2f7a', base: '#10235c' });
 Object.assign(THEMES.cryo.ice, { contour: 1.2, tileI: 1, cap: 0 });
 
-export const THEME_ORDER = ['fire', 'neon', 'cryo', 'cave', 'abyss', 'sky'];
+export const THEME_ORDER = ['fire', 'neon', 'cryo', 'desert', 'cave', 'abyss', 'hell', 'sky', 'heaven'];

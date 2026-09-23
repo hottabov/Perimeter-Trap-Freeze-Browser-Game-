@@ -17,6 +17,7 @@ const hdr = (a, k = 1) => new THREE.Color(a[0] * k, a[1] * k, a[2] * k);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const TILT = 0.6;    // camera tilt from vertical, radians (steeper = more 3D)
 const FOLLOW = 0.14; // how far the camera drifts toward the hero (fraction of half-field)
+const MASK_PAD = 10;  // cells of padding around the grid in the floor mask texture
 
 // Power-up icons drawn once on a canvas: hourglass, lightning, shield, heart
 const iconTextures = {};
@@ -200,7 +201,7 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 4000);
     this.U = {
-      uTime: { value: 0 }, uGameTime: { value: 0 }, uSink: { value: 0 },
+      uTime: { value: 0 }, uGameTime: { value: 0 }, uSink: { value: 0 }, uHarden: { value: 0 },
       uLightPos: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
       uLightCol: { value: Array.from({ length: 8 }, () => new THREE.Color()) },
     };
@@ -293,11 +294,13 @@ export class Renderer {
       uniforms: {
         uTime: this.U.uTime, uLightPos: this.U.uLightPos, uLightCol: this.U.uLightCol,
         uField: { value: new THREE.Vector2(g.W, g.H) },
+        uMask: { value: this.maskTex || null }, uPad: { value: MASK_PAD },
         uA: { value: hex(T.floor.a) }, uB: { value: hex(T.floor.b) }, uC: { value: hex(T.floor.c) },
         uLightK: { value: T.floor.lightK },
       },
       vertexShader: FLOOR_VERT, fragmentShader: FLOOR_FRAG[T.floor.kind],
     });
+    this.floorMat = mat;
     const m = new THREE.Mesh(geo, mat);
     m.position.y = -0.02;
     this.worldGroup.add(m);
@@ -335,6 +338,7 @@ export class Renderer {
         uSunDir: { value: new THREE.Vector3(...T.sun) }, uLightK: { value: I.lightK },
         uHMax: { value: Math.max(I.hMax, 0.01) }, uEdgeDark: { value: I.edgeDark || 0 }, uSink: this.U.uSink,
         uContour: { value: I.contour ?? 0.6 }, uTileI: { value: I.tileI ?? 1 }, uCap: { value: I.cap || 0 },
+        uHarden: this.U.uHarden,
       },
       defines, vertexShader: ICE_VERT, fragmentShader: ICE_FRAG,
       transparent: !!I.holo, depthWrite: !I.holo, blending: I.holo ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -342,20 +346,69 @@ export class Renderer {
     const mesh = new THREE.InstancedMesh(geo, mat, n);
     mesh.frustumCulled = false;
     this.heights = new Float32Array(n);
-    const m = new THREE.Matrix4();
+    this.baseH = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const x = i % g.W, y = (i / g.W) | 0;
-      const border = x === 0 || y === 0 || x === g.W - 1 || y === g.H - 1;
       const wave = 0.5 + 0.5 * Math.sin(x * 0.23 + Math.cos(y * 0.11) * 2) * Math.cos(y * 0.19 - x * 0.05);
-      let h = I.hMin + (I.hMax - I.hMin) * (0.55 * seeds[i] + 0.45 * wave);
-      if (border) h = Math.max(I.hMin, I.hMax * 0.85);
+      this.baseH[i] = I.hMin + (I.hMax - I.hMin) * (0.55 * seeds[i] + 0.45 * wave);
+    }
+    this.iceMesh = mesh;
+    this.applyShape();
+    this.worldGroup.add(mesh);
+  }
+
+  // Arena shape: the wall band gets an even height, void cells outside the arena are not drawn
+  applyShape() {
+    const g = this.game, mesh = this.iceMesh, n = g.W * g.H;
+    if (!mesh || !this.baseH || this.baseH.length !== n) return;
+    const I = this.theme.ice, m = new THREE.Matrix4();
+    const frameH = Math.max(I.hMin, I.hMax * 0.85);
+    for (let i = 0; i < n; i++) {
+      const sh = g.shape[i], x = i % g.W, y = (i / g.W) | 0;
+      const h = sh === 1 ? frameH : this.baseH[i];
       this.heights[i] = h;
-      m.makeScale(I.gap, h, I.gap);
+      if (sh === 2) m.makeScale(0, 0, 0); else m.makeScale(I.gap, h, I.gap);
       m.setPosition(x + 0.5 - g.W / 2, 0, y + 0.5 - g.H / 2);
       mesh.setMatrixAt(i, m);
     }
-    this.iceMesh = mesh;
-    this.worldGroup.add(mesh);
+    mesh.instanceMatrix.needsUpdate = true;
+    this.updateFloorMask();
+  }
+
+  // Soft mask of the arena for the floor shaders: 1 on the field and its wall, fading to 0 outside
+  updateFloorMask() {
+    const g = this.game, P = MASK_PAD, w = g.W + 2 * P, h = g.H + 2 * P;
+    if (!this.maskTex || this.maskTex.image.width !== w || this.maskTex.image.height !== h) {
+      if (this.maskTex) this.maskTex.dispose();
+      this.maskTex = new THREE.DataTexture(new Uint8Array(w * h * 4), w, h, THREE.RGBAFormat);
+      this.maskTex.magFilter = this.maskTex.minFilter = THREE.LinearFilter;
+      this.maskTex.wrapS = this.maskTex.wrapT = THREE.ClampToEdgeWrapping;
+      if (this.floorMat) this.floorMat.uniforms.uMask.value = this.maskTex;
+    }
+    const dist = new Int16Array(w * h).fill(-1), q = new Int32Array(w * h);
+    let qb = 0, qe = 0;
+    for (let y = 0; y < g.H; y++) for (let x = 0; x < g.W; x++) {
+      if (g.shape[y * g.W + x] === 2) continue;
+      const j = (y + P) * w + x + P; dist[j] = 0; q[qe++] = j;
+    }
+    while (qb < qe) {
+      const j = q[qb++], x = j % w, y = (j / w) | 0, d = dist[j] + 1;
+      if (d > P) continue;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const k = ny * w + nx;
+        if (dist[k] < 0) { dist[k] = d; q[qe++] = k; }
+      }
+    }
+    const data = this.maskTex.image.data;
+    for (let j = 0; j < w * h; j++) {
+      const d = dist[j] < 0 ? 99 : dist[j];
+      const t = Math.min(1, Math.max(0, d / 6));
+      const v = Math.round(255 * (1 - t * t * (3 - 2 * t)));
+      data[j * 4] = data[j * 4 + 1] = data[j * 4 + 2] = v; data[j * 4 + 3] = 255;
+    }
+    this.maskTex.needsUpdate = true;
   }
 
   // Per-cell bitmask of sides that face open field (1:-x 2:+x 4:-z 8:+z); drives the region outline
@@ -370,6 +423,7 @@ export class Renderer {
       if (x < W - 1 && c[i + 1] !== SOLID) m |= 2;
       if (y > 0 && c[i - W] !== SOLID) m |= 4;
       if (y < H - 1 && c[i + W] !== SOLID) m |= 8;
+      if (g.mine[i]) m |= 16; // player ice: flashes when it sets hard
       o[i] = m;
     }
     if (this.openAttr) this.openAttr.needsUpdate = true;
@@ -437,7 +491,7 @@ export class Renderer {
       uniforms: {
         uTime: this.U.uTime, uA: { value: hex(T.a) }, uB: { value: hex(T.b) }, uCore: { value: hex(T.core) },
         uIce: { value: hex(this.theme.iceOrb) }, uFrozen: { value: 0 }, uSeed: { value: e.seed }, uHit: { value: 0 },
-        uWobble: { value: style === 'BIO' ? 0.06 * e.r : style === 'FIRE' ? 0.035 * e.r : 0 },
+        uWobble: { value: style === 'BIO' ? 0.06 * e.r : style === 'FIRE' ? 0.035 * e.r : style === 'MAGMA' ? 0.02 * e.r : 0 },
         uLook: { value: new THREE.Vector3(0, 1, 0) },
       },
       defines: { ['STYLE_' + style]: '' }, vertexShader: ORB_VERT, fragmentShader: ORB_FRAG,
@@ -474,7 +528,7 @@ export class Renderer {
     halo.scale.setScalar(e.r * 4.2);
     grp.add(halo);
     const rings = [];
-    const ringCount = e.type === 'boss' ? e.hp : (T.ring ? 1 : 0);
+    const ringCount = e.type === 'boss' ? e.hp : (T.ring ? (T.rings || 1) : 0);
     for (let k = 0; k < ringCount; k++) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(e.r * (1.35 + k * 0.24), 0.05 * (e.boss ? 1.6 : 1), 8, 64),
         new THREE.MeshBasicMaterial({ color: hex(k % 2 ? T.b : T.a).multiplyScalar(3) }));
@@ -632,6 +686,10 @@ export class Renderer {
         this.buildWorld();
         break;
       case 'field':
+        this.applyShape();
+        this.scheduled.length = 0;
+        if (this.freezeAttr) this.freezeAttr.needsUpdate = true;
+        break;
       case 'level':
         this.scheduled.length = 0;
         if (this.freezeAttr) this.freezeAttr.needsUpdate = true;
@@ -804,6 +862,7 @@ export class Renderer {
     const g = this.game, T = this.theme, U = this.U;
     U.uTime.value += realDt / 1000;
     U.uGameTime.value = g.t;
+    U.uHarden.value = g.state === 'title' ? 0 : g.hardenMs || 0;
     this.adaptQuality(realDt);
 
     if (this.sink) {

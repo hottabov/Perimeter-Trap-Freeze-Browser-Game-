@@ -3,27 +3,98 @@ import { rng } from './themegen.js';
 
 export const GOAL_BASE = 90;
 
+export const JOURNEY = 9;      // levels 1-9: the nine hand-made worlds; clearing 9 finishes the journey
+export const HARDEN_MS = 12000; // player ice sets hard this long after it freezes
+
+export function isBoss(L) { return L === 5 || L === JOURNEY || (L > JOURNEY + 1 && L % 5 === 0); }
+
 export function levelSpec(level) {
   const L = level;
+  const endless = Math.max(0, L - JOURNEY);
   const spec = {
     level: L,
-    drifters: 2 + Math.floor((L - 1) / 3),
-    hunters: L >= 3 ? 1 + Math.floor((L - 3) / 4) : 0,
-    splitters: L >= 4 ? (L >= 9 ? 2 : 1) : 0,
-    sparx: L >= 2 ? (L >= 7 ? 2 : 1) : 0,
-    boss: L % 5 === 0,
-    bossHp: 3 + Math.floor(L / 10),
-    speed: Math.min(1.6, 1 + (L - 1) * 0.045),
+    drifters: 2 + (L >= 6 ? 1 : 0) + Math.floor(endless / 3),
+    hunters: L >= 3 ? 1 + (L >= 8 ? 1 : 0) + Math.floor(endless / 5) : 0,
+    splitters: L >= 4 ? 1 + (L >= 12 ? 1 : 0) : 0,
+    sparx: L >= 2 ? 1 + (L >= 8 ? 1 : 0) + (L >= 16 ? 1 : 0) : 0,
+    boss: isBoss(L),
+    bossHp: L === JOURNEY ? 4 : 3 + Math.floor(L / 12),
+    speed: Math.min(1.55, 1 + (L - 1) * 0.035),
     goal: GOAL_BASE,
+    shape: shapeFor(L),
     layout: layoutFor(L),
-    par: 60 + L * 8, // seconds for the time star
+    par: 70 + L * 9, // seconds for the time star
   };
-  // Boss levels are about the boss: fewer small enemies
+  // Shaped arenas keep to layouts that sit well inside them
+  if (spec.shape !== 'rect' && !SHAPE_LAYOUTS.includes(spec.layout)) spec.layout = SHAPE_LAYOUTS[L % SHAPE_LAYOUTS.length];
+  if (spec.shape === 'donut' && spec.layout === 'pillars') spec.layout = 'open';
+  // Small arenas get one drifter less so they don't feel crowded
+  if (SMALL_SHAPES.includes(spec.shape)) spec.drifters = Math.max(1, spec.drifters - 1);
+  // Boss levels are about the boss
   if (spec.boss) { spec.drifters = Math.max(1, spec.drifters - 2); spec.hunters = Math.max(0, spec.hunters - 1); spec.splitters = 0; }
-  // Cap total so the field never gets unreadable
+  // Cap the total so the field never gets unreadable
   const total = () => spec.drifters + spec.hunters + spec.splitters;
-  while (total() > 7) { if (spec.drifters > 2) spec.drifters--; else if (spec.splitters) spec.splitters--; else spec.hunters--; }
+  while (total() > 6) { if (spec.drifters > 2) spec.drifters--; else if (spec.splitters) spec.splitters--; else spec.hunters--; }
   return spec;
+}
+
+/* ---------- arena shapes ---------- */
+// Arenas are rectilinear so the hero can walk every edge with the four arrow keys.
+const SHAPE_CYCLE = ['octagon', 'L', 'plus', 'U', 'rect', 'donut', 'T', 'Z', 'H', 'rect', 'steps', 'ring2'];
+const SHAPE_LAYOUTS = ['open', 'pillars', 'islands', 'open'];
+const SMALL_SHAPES = ['L', 'plus', 'T', 'Z'];
+export const SHAPE_NAMES = {
+  rect: 'Open field', octagon: 'Octagon', L: 'Corner', plus: 'Cross', U: 'Horseshoe', donut: 'Ring',
+  T: 'Anvil', Z: 'Zigzag', H: 'Twin halls', steps: 'Terraces', ring2: 'Twin pools',
+};
+function shapeFor(L) {
+  if (L <= 2) return 'rect';
+  return SHAPE_CYCLE[(L - 3) % SHAPE_CYCLE.length];
+}
+
+// Returns a Uint8Array with 1 for every cell that is open field at the start of the level.
+// Everything else becomes the arena wall (the band next to the field) or empty void.
+export function shapeMask(kind, W, H, seed) {
+  const r = rng(seed * 7 + 3);
+  const m = new Uint8Array(W * H);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) m[y * W + x] = 1;
+  const iw = W - 2, ih = H - 2;
+  const flipX = r() < 0.5, flipY = r() < 0.5;
+  // cut a rectangle given in fractions of the inner field (after optional mirroring)
+  const cut = (fx0, fy0, fx1, fy1) => {
+    if (flipX) [fx0, fx1] = [1 - fx1, 1 - fx0];
+    if (flipY) [fy0, fy1] = [1 - fy1, 1 - fy0];
+    const x0 = 1 + Math.round(fx0 * iw), x1 = 1 + Math.round(fx1 * iw);
+    const y0 = 1 + Math.round(fy0 * ih), y1 = 1 + Math.round(fy1 * ih);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (x > 0 && y > 0 && x < W - 1 && y < H - 1) m[y * W + x] = 0;
+  };
+  // staircase corner: n steps of s cells
+  const stairs = (n, s) => {
+    for (let k = 1; k <= n; k++) {
+      const w = (n + 1 - k) * s, h = k * s;
+      for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const gx = cx ? W - 2 - x : 1 + x, gy = cy ? H - 2 - y : 1 + y;
+          m[gy * W + gx] = 0;
+        }
+      }
+    }
+  };
+  const s = Math.max(3, Math.round(Math.min(iw, ih) * 0.075));
+  switch (kind) {
+    case 'octagon': stairs(3, s); break;
+    case 'steps': stairs(5, Math.max(3, Math.round(s * 0.8))); break;
+    case 'L': cut(0.56, 0, 1, 0.5); break;
+    case 'plus': cut(0, 0, 0.26, 0.3); cut(0.74, 0, 1, 0.3); cut(0, 0.7, 0.26, 1); cut(0.74, 0.7, 1, 1); break;
+    case 'U': cut(0.37, 0, 0.63, 0.48); break;
+    case 'T': cut(0, 0.52, 0.3, 1); cut(0.7, 0.52, 1, 1); break;
+    case 'Z': cut(0, 0, 0.36, 0.42); cut(0.64, 0.58, 1, 1); break;
+    case 'H': cut(0.38, 0, 0.62, 0.3); cut(0.38, 0.7, 0.62, 1); break;
+    case 'donut': cut(0.38, 0.35, 0.62, 0.65); break;
+    case 'ring2': cut(0.22, 0.36, 0.38, 0.64); cut(0.62, 0.36, 0.78, 0.64); break;
+    default: break;
+  }
+  return m;
 }
 
 const LAYOUT_CYCLE = ['open', 'open', 'pillars', 'open', 'cross', 'combs', 'pillars', 'islands', 'brokenRing', 'combs', 'cross', 'islands'];

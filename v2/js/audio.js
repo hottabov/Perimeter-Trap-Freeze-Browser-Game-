@@ -1,9 +1,11 @@
 // Procedural sound: every effect is synthesized with Web Audio, tuned per theme.
+import { Music } from './music.js';
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
 export class Sfx {
   constructor() {
     this.ctx = null; this.muted = false; this.A = null; this.ambient = [];
+    this.music = new Music(this);
   }
 
   unlock() {
@@ -21,10 +23,12 @@ export class Sfx {
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
     if (this.A && !this.ambient.length) this.startAmbient();
+    this.music.start();
   }
 
   setTheme(T) {
     this.A = T.audio;
+    this.music.setTheme(T);
     if (this.ctx) { this.stopAmbient(); this.startAmbient(); }
   }
 
@@ -170,7 +174,7 @@ export class Sfx {
   startAmbient() {
     if (!this.ctx || !this.A) return;
     const ctx = this.ctx, A = this.A, t = ctx.currentTime;
-    const bus = ctx.createGain(); bus.gain.setValueAtTime(0.0001, t); bus.gain.exponentialRampToValueAtTime(0.09, t + 2.5);
+    const bus = ctx.createGain(); bus.gain.setValueAtTime(0.0001, t); bus.gain.exponentialRampToValueAtTime(0.045, t + 2.5);
     const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = A.cutoff; flt.Q.value = 2;
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07; const lg = ctx.createGain(); lg.gain.value = A.cutoff * 0.45;
     lfo.connect(lg); lg.connect(flt.frequency); lfo.start();
@@ -199,6 +203,23 @@ export class Sfx {
         if (Math.random() < 0.02) this.noise({ dur: 1.4, gain: 0.03, type: 'bandpass', f: 300 + Math.random() * 500, q: 8, attack: 0.5, send: 0.9 });
       } else if (A.chimes) { // wind chimes
         if (Math.random() < 0.12) this.tone({ f: this.note((Math.random() * 10) | 0, 3), type: 'sine', dur: 1.8, gain: 0.03, attack: 0.01, send: 0.9 });
+      } else if (A.wind) { // desert wind gusts and a distant plucked string
+        if (step % 30 === 0) this.noise({ dur: 3.8, gain: 0.05, type: 'bandpass', f: 250 + Math.random() * 250, to: 700 + Math.random() * 900, q: 3, attack: 1.6, send: 0.5 });
+        if (Math.random() < 0.05) {
+          const d = (Math.random() * 8) | 0;
+          this.tone({ f: this.note(d, 2), type: 'triangle', dur: 0.7, gain: 0.045, cutoff: 2400, send: 0.5 });
+          this.tone({ f: this.note(d, 3), type: 'sine', dur: 0.4, gain: 0.015, send: 0.5 });
+        }
+      } else if (A.inferno) { // rumbling furnace, crackle and a far-off bell
+        if (step % 22 === 0) this.noise({ dur: 3.2, gain: 0.07, type: 'lowpass', f: 160, to: 90, q: 1, attack: 1.2, send: 0.2 });
+        if (Math.random() < 0.35) this.noise({ dur: 0.03, gain: 0.02 + Math.random() * 0.04, type: 'bandpass', f: 1500 + Math.random() * 3000, q: 4, send: 0.15 });
+        if (step % 64 === 32) this.tone({ f: this.note(0, 0), type: 'triangle', dur: 4, gain: 0.07, attack: 0.01, cutoff: 900, send: 0.9 });
+      } else if (A.choir) { // slow choir-like swells and a harp run now and then
+        if (step % 32 === 0) {
+          const base = [0, 2, 4, 1, 3][((step / 32) | 0) % 5];
+          [0, 2, 4].forEach((d, k) => [-6, 6].forEach(det => this.tone({ f: this.note(base + d, 1), type: 'sine', dur: 4.2, gain: 0.022, attack: 1.8, detune: det, send: 0.9 })));
+        }
+        if (step % 48 === 24 && Math.random() < 0.7) for (let k = 0; k < 6; k++) this.tone({ f: this.note(k * 2, 2), type: 'triangle', dur: 1.4, gain: 0.03, at: k * 0.09, cutoff: 3500, send: 0.8 });
       } else if (A.steam) { // crackling embers
         if (Math.random() < 0.3) this.noise({ dur: 0.03, gain: 0.03 + Math.random() * 0.04, type: 'bandpass', f: 2000 + Math.random() * 3000, q: 4, send: 0.2 });
       }
