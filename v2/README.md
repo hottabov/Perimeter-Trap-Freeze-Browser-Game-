@@ -20,10 +20,12 @@ Open `v2/index.html` through any static server (ES modules need http). On the li
 | Enemy | From level | Behaviour |
 |---|---|---|
 | Drifter | 1 | Bounces off ice |
-| Sparx | 2 | Crawls along the ice edge, so standing still on the edge is no longer safe |
+| Sparx | 2 | Crawls along the ice edge, so standing still on the edge is no longer safe. Freeze the stretch of edge it is on and it is buried and shatters (2,000 × multiplier) |
 | Hunter | 3 | Turns toward you while you are drawing a line |
 | Splitter | 4 | Splits into two drifters if you leave it alone too long |
 | Boss | every 5th | Has rings (HP). Each capture cracks one ring, and it breaks out smaller, faster and with a minion |
+
+**Ice erosion.** Every time an enemy bounces off ice you froze, the ice cracks: the hit cell takes 2 damage and its neighbours along the wall take 1 (the boss hits harder and wider). Ice holds 3 hits on levels 1–2 and 2 hits from level 3. Broken cells melt back into open field, so the frozen percentage can drop if you are slow. The outer frame and level obstacles never break.
 
 **Power-ups** appear on the field. Touch one, or freeze the area it's in, to collect it:
 - Slow time: enemies and sparx at 45% speed for 7 s

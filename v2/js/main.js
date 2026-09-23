@@ -16,7 +16,8 @@ const FAMILY_NAMES = { fire: 'Fire & Ice', neon: 'Neon Glacier', cryo: 'Cryo Voi
 const GLYPH = { fire: '❄', neon: '◆', cryo: '◇' };
 const POWER_NAMES = { slow: 'Slow time', haste: 'Haste', shield: 'Shield', life: '+1 life' };
 const NEW_FOES = {
-  2: '<b>New: Sparx.</b> It crawls along the ice edge. The edge is no longer safe, so keep moving.',
+  1: '<b>Careful:</b> enemies crack the ice every time they hit it. Cracked ice breaks and melts back into open field.',
+  2: '<b>New: Sparx.</b> It crawls along the ice edge, so keep moving. Freeze the stretch of edge it is crawling on to shatter it.',
   3: '<b>New: Hunter.</b> It turns toward you while you are drawing a line.',
   4: '<b>New: Splitter.</b> Wait too long and it splits in two.',
   5: '<b>Boss.</b> Trap it once for every ring. It breaks out smaller and angrier each time.',
@@ -252,6 +253,14 @@ game.on('death', (d) => { sfx.death(); if (d.reason === 'bite') callout('Crossed
 game.on('respawn', () => sfx.respawn());
 game.on('extraLife', () => callout('+1 life', 'small'));
 game.on('sparxSpawn', () => sfx.sparx());
+game.on('sparxShatter', ({ s, points }) => {
+  sfx.shatter(false);
+  const p = game.sparxRenderPos(s);
+  popup('+' + fmt(points), p.x, p.y, 3, 'kill');
+  callout('Sparx shattered', 'small');
+});
+game.on('iceCrack', () => sfx.crack());
+game.on('iceBreak', ({ cells }) => sfx.iceBreak(cells.length));
 game.on('powerSpawn', () => sfx.powerSpawn());
 game.on('powerup', ({ p }) => { sfx.powerup(p.type); if (p.type !== 'life') callout(POWER_NAMES[p.type], 'small'); });
 game.on('shieldBreak', () => { sfx.shieldBreak(); callout('Shield broke', 'small'); });

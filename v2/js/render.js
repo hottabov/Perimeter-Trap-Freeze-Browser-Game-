@@ -281,6 +281,9 @@ export class Renderer {
     const seeds = new Float32Array(n);
     for (let i = 0; i < n; i++) seeds[i] = (Math.sin(i * 12.9898) * 43758.5453) % 1 * 0.5 + 0.5;
     geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+    this.crackAttr = new THREE.InstancedBufferAttribute(g.iceDmg, 1);
+    this.crackAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aCrack', this.crackAttr);
     const defines = {};
     if (I.facets) defines.FACETS = '';
     if (I.sparkle) defines.SPARKLE = '';
@@ -635,6 +638,33 @@ export class Renderer {
         P.burst(s.x + 0.5 - W2, 1.5, s.y + 0.5 - H2, 50, hdr(T.sparx.color, 0.8), 9, 0.35, 600, { up: 0.8, grav: -8 });
         break;
       }
+      case 'iceCrack': {
+        const top = this.cellTop(g.idx(Math.floor(d.x), Math.floor(d.y)));
+        P.burst(d.x - W2, Math.max(0.5, top - 0.3), d.y - H2, 7, hdr(T.burst.killAlt, 0.7), 5, 0.22, 380, { up: 0.9, grav: -14, jitter: 0.2 });
+        break;
+      }
+      case 'iceBreak': {
+        const c = hdr(T.burst.killAlt, 0.9);
+        for (const i of d.cells) {
+          const x = i % g.W + 0.5 - W2, z = ((i / g.W) | 0) + 0.5 - H2, y = (this.heights[i] || 1) * 0.6;
+          this.shards.burst(x, y, z, 5, 6, 0);
+          P.burst(x, y, z, 8, c, 6, 0.3, 500, { up: 0.8, jitter: 0.4 });
+        }
+        this.fx.shake += Math.min(0.35, d.cells.length * 0.08);
+        break;
+      }
+      case 'sparxShatter': {
+        const s = d.s, p = g.sparxRenderPos(s);
+        const x = p.x - W2, z = p.y - H2, y = this.cellTop(g.idx(s.x, s.y)) + 0.4;
+        this.shards.burst(x, y, z, 36, 10, 0.5);
+        P.burst(x, y, z, 90, hdr(T.sparx.color, 0.9), 18, 0.4, 800, { up: 0.8, grav: -12 });
+        P.burst(x, y, z, 40, hdr(T.burst.killAlt), 12, 0.35, 700, { up: 0.9 });
+        this.fx.shake += 0.8;
+        this.flashScreen(hdr(T.sparx.color, 0.08), 0.2);
+        this.warpAt(p.x, p.y, y);
+        this.hitstop(90);
+        break;
+      }
       case 'sparxDie': {
         const s = d.s;
         P.burst(s.x + 0.5 - W2, 1.5, s.y + 0.5 - H2, 40, hdr(T.sparx.color, 0.8), 8, 0.35, 500, { up: 0.6 });
@@ -700,6 +730,7 @@ export class Renderer {
 
     if (g.freezeDirty && this.freezeAttr) { this.freezeAttr.needsUpdate = true; g.freezeDirty = false; }
     if (g.trailDirty && this.trailAttr) { this.trailAttr.needsUpdate = true; g.trailDirty = false; }
+    if (g.crackDirty && this.crackAttr) { this.crackAttr.needsUpdate = true; g.crackDirty = false; }
 
     if (this.scheduled.length) {
       const c = hdr(this.theme.burst.capture);

@@ -33,11 +33,12 @@ vec3 pointLights(vec3 W, vec3 N, float falloff){
 export const ICE_VERT = /* glsl */`
 attribute float aFreeze;
 attribute float aSeed;
+attribute float aCrack;
 uniform float uGameTime;
 uniform float uGrow;
 uniform float uHMax;
 uniform float uSink;
-varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack;
 float easeOutBack(float x){ float c1=1.9; float c3=c1+1.; return 1.+c3*pow(x-1.,3.)+c1*pow(x-1.,2.); }
 void main(){
   float age = uGameTime - aFreeze;
@@ -46,7 +47,8 @@ void main(){
   vec3 p = position;
   // level transition: columns sink back into the floor, staggered per cell
   float sink = clamp(uSink * 1.6 - aSeed * 0.6, 0., 1.);
-  p.y *= g * (1. - sink * sink);
+  p.y *= g * (1. - sink * sink) * (1. - 0.28 * aCrack);
+  vCrack = aCrack;
   p.xz *= age < 0. || sink > 0.99 ? 0. : mix(0.35, 1.0, min(1., t*2.5)) * (1. - sink * 0.5);
   vec4 wp = modelMatrix * instanceMatrix * vec4(p, 1.);
   vW = wp.xyz;
@@ -62,7 +64,7 @@ uniform vec3 uBase; uniform vec3 uTop; uniform vec3 uDeep; uniform vec3 uEdge; u
 uniform float uEdgeW; uniform float uEdgeI; uniform float uRimP; uniform float uRimI; uniform float uAlpha;
 uniform float uSpark; uniform float uTime; uniform float uFlashDecay; uniform vec3 uSunDir; uniform float uLightK;
 uniform float uEdgeDark;
-varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack;
 ${NOISE}
 ${LIGHTS}
 void main(){
@@ -98,6 +100,17 @@ void main(){
 #endif
   float fl = vAge >= 0. ? exp(-vAge / uFlashDecay) : 0.;
   col += uFlash * fl;
+  // cracks from enemy hits: dark fissures with a faint inner glow, denser as the cell weakens
+  float crack = 0.;
+  if (vCrack > 0.01) {
+    vec2 cp = vW.xz * 1.3 + vW.y * 0.9 + vSeed * 13.;
+    float c1 = 1. - smoothstep(0., 0.05 + 0.04 * vCrack, abs(fbm(cp) - 0.5));
+    float c2 = (1. - smoothstep(0., 0.04, abs(fbm(cp * 2.1 + 5.1) - 0.5))) * step(0.45, vCrack);
+    crack = clamp(max(c1, c2), 0., 1.) * min(1., vCrack * 1.8);
+    col *= 1. - 0.5 * vCrack;
+    col = mix(col, col * 0.12, crack * 0.9);
+    col += uFlash * crack * (0.5 + 0.6 * vCrack) * (0.7 + 0.3 * sin(uTime * 9. + vSeed * 30.));
+  }
   float alpha = uAlpha;
 #ifdef HOLO
   float scan = 0.55 + 0.45 * sin(vW.y * 30. - uTime * 5. + vSeed * 6.);

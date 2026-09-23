@@ -138,6 +138,22 @@ export class Sfx {
     this.noise({ dur: 0.8, gain: 0.45, type: 'highpass', f: 1200, q: 0.5, send: 0.4 });
     this.tone({ f: 110, glideTo: 55, type: 'sawtooth', dur: 0.6, gain: 0.2, cutoff: 800, send: 0.2 });
   }
+  crack() {
+    if (!this.A || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (now - (this.lastCrack || 0) < 0.07) return;
+    this.lastCrack = now;
+    this.tone({ f: 2400 + Math.random() * 1800, type: 'sine', dur: 0.06, gain: 0.025, send: 0.4 });
+    this.noise({ dur: 0.05, gain: 0.05, type: 'highpass', f: 3000, send: 0.1 });
+  }
+  iceBreak(n) {
+    if (!this.A || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (now - (this.lastBreak || 0) < 0.12) return;
+    this.lastBreak = now;
+    this.noise({ dur: 0.22, gain: Math.min(0.3, 0.1 + n * 0.03), type: 'bandpass', f: 1600, q: 1.2, send: 0.3 });
+    this.tone({ f: 220, glideTo: 90, type: 'triangle', dur: 0.18, gain: 0.08, send: 0.1 });
+  }
   split() { if (this.A) this.tone({ f: 500, glideTo: 1100, type: 'triangle', dur: 0.2, gain: 0.1, send: 0.3 }); }
   goal() {
     if (!this.A) return;

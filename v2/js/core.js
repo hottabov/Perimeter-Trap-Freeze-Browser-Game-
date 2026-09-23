@@ -13,7 +13,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const LONG_SIDE = 112;
 const HERO_STEP_MS = 30;
 const KILL_PTS = { drifter: 1000, hunter: 1500, splitter: 1200, boss: 5000 };
-const POWER_WEIGHTS = [['slow', 30], ['haste', 25], ['shield', 30], ['life', 15]];
+const SPARX_PTS = 2000;
+const POWER_WEIGHTS =[['slow', 30], ['haste', 25], ['shield', 30], ['life', 15]];
 
 let nextId = 1;
 
@@ -50,6 +51,9 @@ export class Game {
     this.cells = new Uint8Array(w * h);
     this.freezeAt = new Float32Array(w * h).fill(NEVER);
     this.trailAt = new Float32Array(w * h).fill(-1);
+    this.iceHp = new Uint8Array(w * h);        // hits left before a frozen cell breaks
+    this.iceDmg = new Float32Array(w * h);     // 0..1 crack amount, read by the renderer
+    this.perm = new Uint8Array(w * h);         // border and obstacles: unbreakable, not counted
     this.emit('grid', { w, h });
   }
   idx(x, y) { return y * this.W + x; }
@@ -78,6 +82,8 @@ export class Game {
     this.cells.fill(ACTIVE);
     this.freezeAt.fill(NEVER);
     this.trailAt.fill(-1);
+    this.iceHp.fill(0); this.iceDmg.fill(0); this.perm.fill(0);
+    this.iceMax = this.level <= 2 ? 3 : 2; // centre hit takes 2, neighbours 1
     const ring = [];
     for (let x = 0; x < W; x++) ring.push(this.idx(x, 0));
     for (let y = 1; y < H; y++) ring.push(this.idx(W - 1, y));
@@ -108,10 +114,10 @@ export class Game {
       comps.forEach((c, k) => { if (k !== big) for (const i of c) { this.cells[i] = SOLID; this.freezeAt[i] = wave ? this.t + 1200 : -1e6; } });
     }
     let open = 0;
-    for (let i = 0; i < this.cells.length; i++) if (this.cells[i] === ACTIVE) open++;
+    for (let i = 0; i < this.cells.length; i++) { if (this.cells[i] === ACTIVE) open++; else this.perm[i] = 1; }
     this.playable = open;
     this.frozenCount = 0;
-    this.freezeDirty = this.trailDirty = true;
+    this.freezeDirty = this.trailDirty = this.crackDirty = true;
     this.emit('field', { wave });
   }
 
@@ -305,7 +311,7 @@ export class Game {
   capture() {
     const h = this.hero;
     const trail = h.trail; h.trail = [];
-    for (const i of trail) { this.cells[i] = SOLID; this.freezeAt[i] = this.t; this.trailAt[i] = -1; }
+    for (const i of trail) { this.cells[i] = SOLID; this.freezeAt[i] = this.t; this.trailAt[i] = -1; this.iceHp[i] = this.iceMax; this.iceDmg[i] = 0; }
     const comps = this.components();
     const mask = new Uint8Array(this.W * this.H);
     let frozen = 0;
@@ -321,9 +327,10 @@ export class Game {
       if (!mask[i] || (this.cells[i] === SOLID && this.freezeAt[i] <= this.t)) continue;
       this.cells[i] = SOLID;
       this.freezeAt[i] = this.t + Math.max(0, dist[i]) * per;
+      this.iceHp[i] = this.iceMax; this.iceDmg[i] = 0;
     }
     this.frozenCount += frozen + trail.length;
-    this.freezeDirty = this.trailDirty = true;
+    this.freezeDirty = this.trailDirty = this.crackDirty = true;
 
     // Enemies inside the frozen region
     const mult = this.multiplier;
@@ -358,7 +365,17 @@ export class Game {
     this.emit('capture', { trail, frozen, pct, kills: kills.length, killPts, areaPts, mult, maxDelay: maxd * per, x: hp.x, y: hp.y, t: this.t });
 
     if (!this.isPerimeter(h.x, h.y)) this.snapHeroToPerimeter();
-    for (const s of this.sparx) if (!this.isPerimeter(s.x, s.y)) this.snapSparx(s);
+    // A sparx whose stretch of edge got sealed inside the ice is buried and shatters
+    const buried = this.sparx.filter(s => !this.isPerimeter(s.x, s.y));
+    if (buried.length) {
+      this.sparx = this.sparx.filter(s => !buried.includes(s));
+      buried.forEach(s => {
+        const points = SPARX_PTS * mult * buried.length;
+        this.score += points;
+        this.emit('sparxShatter', { s, points });
+      });
+      if (!kills.length && !bossHit) this.streak++;
+    }
 
     this.checkWin();
   }
@@ -534,10 +551,12 @@ export class Game {
       for (let k = 0; k < steps; k++) {
         const r = e.r * 0.92;
         const nx = e.x + e.vx * s, sx = Math.sign(e.vx) * r;
-        if (this.solidAt(nx + sx, e.y) || this.solidAt(nx + sx, e.y - r * 0.7) || this.solidAt(nx + sx, e.y + r * 0.7)) { e.vx = -e.vx; this.emit('bounce', { e }); }
+        const hx = this.firstSolid(nx + sx, e.y, 0, r * 0.7);
+        if (hx) { e.vx = -e.vx; this.emit('bounce', { e }); this.hitIce(e, hx[0], hx[1], 'x'); }
         else e.x = nx;
         const ny = e.y + e.vy * s, sy = Math.sign(e.vy) * r;
-        if (this.solidAt(e.x, ny + sy) || this.solidAt(e.x - r * 0.7, ny + sy) || this.solidAt(e.x + r * 0.7, ny + sy)) { e.vy = -e.vy; this.emit('bounce', { e }); }
+        const hy = this.firstSolid(e.x, ny + sy, r * 0.7, 0);
+        if (hy) { e.vy = -e.vy; this.emit('bounce', { e }); this.hitIce(e, hy[0], hy[1], 'y'); }
         else e.y = ny;
       }
       if (!e.hunting && Math.random() < dt * 0.0004) {
@@ -554,6 +573,60 @@ export class Game {
     }
     if (born.length) this.enemies.push(...born);
     this.enemies = this.enemies.filter(e => e.state !== 'dead' && e.state !== 'gone');
+  }
+
+  // First solid point among the centre and two side probes (ox/oy offsets), or null
+  firstSolid(px, py, ox, oy) {
+    if (this.solidAt(px, py)) return [px, py];
+    if (this.solidAt(px - ox, py - oy)) return [px - ox, py - oy];
+    if (this.solidAt(px + ox, py + oy)) return [px + ox, py + oy];
+    return null;
+  }
+
+  /* ---------------- ice erosion ---------------- */
+  // Every bounce chips the ice it hits (and its neighbours along the wall). Cells that run out
+  // of strength thaw back into open field, so frozen area can be lost if you are slow.
+  hitIce(e, px, py, axis) {
+    if (this.state !== 'playing' || this.clearAt || this.t < (e.lastHit || 0) + 220) return;
+    e.lastHit = this.t;
+    const cx = Math.floor(px), cy = Math.floor(py);
+    const dmg = e.boss ? 3 : 2, rad = e.boss ? 3 : 2;
+    const broken = [];
+    let chipped = false;
+    for (let k = -rad; k <= rad; k++) {
+      const x = axis === 'x' ? cx : cx + k, y = axis === 'x' ? cy + k : cy;
+      if (!this.inside(x, y)) continue;
+      const i = this.idx(x, y);
+      if (this.cells[i] !== SOLID || this.perm[i] || this.t < this.freezeAt[i] + 400) continue;
+      this.iceHp[i] = Math.max(0, this.iceHp[i] - (k === 0 ? dmg : 1));
+      if (this.iceHp[i] === 0) {
+        if (this.edgeOf(x, y)) broken.push(i);
+        else this.iceHp[i] = 1; // don't open sealed pockets; it breaks once exposed
+      }
+      this.iceDmg[i] = 1 - this.iceHp[i] / this.iceMax;
+      chipped = true;
+    }
+    if (!chipped) return;
+    this.crackDirty = true;
+    this.emit('iceCrack', { x: px, y: py, e });
+    if (broken.length) this.breakIce(broken);
+  }
+
+  breakIce(list) {
+    for (const i of list) {
+      this.cells[i] = ACTIVE; this.freezeAt[i] = NEVER; this.iceHp[i] = 0; this.iceDmg[i] = 0;
+      this.frozenCount = Math.max(0, this.frozenCount - 1);
+    }
+    this.freezeDirty = this.crackDirty = true;
+    this.emit('iceBreak', { cells: list });
+    const h = this.hero;
+    if (!h.carving && !this.isPerimeter(h.x, h.y)) this.snapHeroToPerimeter();
+    if (h.carving && !this.isPerimeter(h.startX, h.startY)) {
+      // the cut's starting point melted: respawn point moves to the nearest edge
+      const sx = h.x, sy = h.y; h.x = h.startX; h.y = h.startY; this.snapHeroToPerimeter();
+      h.startX = h.x; h.startY = h.y; h.x = h.px = sx; h.y = h.py = sy;
+    }
+    for (const s of this.sparx) if (!this.isPerimeter(s.x, s.y)) this.snapSparx(s);
   }
 
   split(e, born) {
