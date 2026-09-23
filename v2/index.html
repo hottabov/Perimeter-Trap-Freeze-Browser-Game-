@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#04060b">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Mono:wght@400;600&family=Major+Mono+Display&family=Monoton&family=Outfit:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Cinzel:wght@500;700&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Mono:wght@400;600&family=Major+Mono+Display&family=Marcellus&family=Monoton&family=Outfit:wght@400;600;800&family=Pirata+One&display=swap">
 <style>
   :root {
     color-scheme: dark;
@@ -28,6 +28,18 @@
     --ui: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     --title-size: clamp(44px, 9.5vw, 120px); --title-track: 0.04em; --title-case: lowercase; --display-style: normal; --display-weight: 400;
   }
+  :root[data-family="cave"] {
+    --display: "Cinzel", "Trajan Pro", Georgia, serif;
+    --title-size: clamp(48px, 10vw, 132px); --title-track: 0.06em; --title-case: uppercase; --display-style: normal; --display-weight: 700;
+  }
+  :root[data-family="abyss"] {
+    --display: "Pirata One", "UnifrakturCook", Georgia, serif;
+    --title-size: clamp(64px, 13vw, 170px); --title-track: 0.01em; --title-case: none; --display-style: normal; --display-weight: 400;
+  }
+  :root[data-family="sky"] {
+    --display: "Marcellus", "Cormorant Garamond", Georgia, serif;
+    --title-size: clamp(54px, 11vw, 150px); --title-track: 0.03em; --title-case: none; --display-style: normal; --display-weight: 400;
+  }
   html, body { height: 100%; margin: 0; background: #02040a; overflow: hidden; }
   body { color: var(--ink); font-family: var(--ui); -webkit-font-smoothing: antialiased; touch-action: none; user-select: none; -webkit-user-select: none; transition: color .6s; }
   #stage { position: fixed; inset: 0; }
@@ -37,6 +49,9 @@
   .display { font-family: var(--display); font-style: var(--display-style); font-weight: var(--display-weight); text-transform: var(--title-case); }
   :root[data-family="neon"] .display { text-shadow: 0 0 16px var(--warm), 0 0 40px var(--warm); }
   :root[data-family="cryo"] .display { text-shadow: -2px 0 rgba(255, 60, 120, .45), 2px 0 rgba(60, 200, 255, .45), 0 0 24px var(--accent); }
+  :root[data-family="cave"] .display { text-shadow: 0 2px 0 rgba(0, 0, 0, .6), 0 0 26px var(--accent); }
+  :root[data-family="abyss"] .display { text-shadow: 0 0 18px var(--warm), 0 0 60px color-mix(in srgb, var(--warm) 60%, transparent); }
+  :root[data-family="sky"] .display { text-shadow: 0 0 22px color-mix(in srgb, var(--warm) 70%, transparent), 0 1px 0 rgba(255, 255, 255, .5); }
 
   /* ---------- HUD ---------- */
   .hud { position: fixed; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -86,6 +101,9 @@
   :root[data-family="fire"] h1 { background: linear-gradient(180deg, #ffffff 10%, var(--accent) 60%, color-mix(in srgb, var(--accent) 60%, #002) 98%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 28px color-mix(in srgb, var(--accent) 40%, transparent)); }
   :root[data-family="neon"] h1 { color: color-mix(in srgb, var(--warm) 25%, white); text-shadow: 0 0 6px #fff, 0 0 18px var(--warm), 0 0 42px var(--warm), 0 0 80px var(--warm); }
   :root[data-family="cryo"] h1 { color: color-mix(in srgb, var(--accent) 25%, white); text-shadow: -2px 0 rgba(255, 60, 120, .55), 2px 0 rgba(60, 200, 255, .55), 0 0 30px var(--accent); }
+  :root[data-family="cave"] h1 { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 30%, white) 0%, var(--accent) 55%, color-mix(in srgb, var(--accent) 45%, #000) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, .55)) drop-shadow(0 0 30px color-mix(in srgb, var(--accent) 45%, transparent)); }
+  :root[data-family="abyss"] h1 { color: color-mix(in srgb, var(--warm) 35%, #fff4ee); text-shadow: 0 0 10px var(--warm), 0 0 40px var(--warm), 0 0 110px color-mix(in srgb, var(--warm) 70%, #000); }
+  :root[data-family="sky"] h1 { background: linear-gradient(180deg, #ffffff 15%, var(--warm) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 26px color-mix(in srgb, var(--warm) 55%, transparent)); }
   .sub { margin: 0; font-size: 15px; letter-spacing: .4em; text-transform: uppercase; color: var(--warm); }
   .lead { margin: 4px 0 0; font-size: 16px; color: var(--muted); max-width: 48ch; line-height: 1.5; text-wrap: balance; }
   .cta { all: unset; cursor: pointer; margin-top: 8px; padding: 14px 34px; border-radius: 999px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 14px;
@@ -157,7 +175,7 @@
   #err { position: fixed; inset: auto 16px 16px 16px; z-index: 20; color: #ffb4b4; font: 13px ui-monospace, monospace; }
 
   @media (max-width: 760px) {
-    .switch button span, .switch button kbd, .switch button:not([data-fam="random"]) { display: none; }
+    .switch button span, .switch button kbd { display: none; }
     .hud.bottom { flex-wrap: wrap; row-gap: 8px; }
     .effects { order: -1; width: 100%; justify-content: center; }
     .effects:empty { display: none; }
@@ -183,14 +201,11 @@
 </header>
 
 <footer class="hud bottom">
-  <div class="meter" title="Frozen area and the level goal"><div class="bar"><i id="capbar"></i><b id="goaltick"></b></div><span id="cap">0% of 75% frozen</span></div>
+  <div class="meter" title="Frozen area and the level goal"><div class="bar"><i id="capbar"></i><b id="goaltick"></b></div><span id="cap">0% of 90% frozen</span></div>
   <div class="effects" id="effects"></div>
   <div class="right-tools">
-    <div class="switch" role="group" aria-label="Generate a new world">
-      <button data-fam="fire" title="New Fire & Ice world"><kbd>1</kbd><span>Fire</span></button>
-      <button data-fam="neon" title="New Neon Glacier world"><kbd>2</kbd><span>Neon</span></button>
-      <button data-fam="cryo" title="New Cryo Void world"><kbd>3</kbd><span>Cryo</span></button>
-      <button data-fam="random" title="New random world"><kbd>G</kbd>↻<span> New world</span></button>
+    <div class="switch" role="group" aria-label="World">
+      <button data-fam="random" title="Generate a new world (G)"><kbd>G</kbd>↻<span> New world</span></button>
     </div>
     <button class="icon-btn" id="mute" aria-label="Toggle sound">♪</button>
   </div>
@@ -202,19 +217,12 @@
 
 <section class="screen" id="screen-title">
   <div class="panel">
-    <div class="eyebrow">A new frozen world every level</div>
     <h1>Perimeter</h1>
     <p class="sub">Trap &amp; Freeze</p>
     <p class="lead">Cut across the field. Close your line and the smaller side turns to ice. Anything trapped inside shatters. Freeze enough of the field or break every enemy to move on.</p>
     <button class="cta" id="play">Play</button>
     <div class="best" id="title-best"></div>
-    <div class="modes" role="group" aria-label="World style">
-      <button class="mode" data-mode="auto"><b>Every level new</b><small>A different generated world each level</small></button>
-      <button class="mode" data-mode="fire"><b>Fire &amp; Ice</b><small>Night lakes, ice columns, embers</small></button>
-      <button class="mode" data-mode="neon"><b>Neon Glacier</b><small>Glass tiles on synthwave grids</small></button>
-      <button class="mode" data-mode="cryo"><b>Cryo Void</b><small>Holographic lattices in deep space</small></button>
-    </div>
-    <div class="keys desk"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or WASD to move · <kbd>P</kbd> pause · <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>G</kbd> new world · <kbd>M</kbd> sound</div>
+    <div class="keys desk"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or WASD to move · <kbd>P</kbd> pause · <kbd>M</kbd> sound</div>
     <div class="keys touch">Swipe anywhere to steer</div>
   </div>
 </section>
@@ -234,7 +242,7 @@
     <h2 class="display" id="clear-world">Ember Lake</h2>
     <div class="stars" id="clear-stars"></div>
     <dl class="ledger" id="clear-ledger"></dl>
-    <button class="cta" id="next">Next world</button>
+    <button class="cta" id="next">Next level</button>
   </div>
 </section>
 

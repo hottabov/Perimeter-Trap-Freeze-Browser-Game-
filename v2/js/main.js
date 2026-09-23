@@ -12,8 +12,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } },
 };
-const FAMILY_NAMES = { fire: 'Fire & Ice', neon: 'Neon Glacier', cryo: 'Cryo Void' };
-const GLYPH = { fire: '❄', neon: '◆', cryo: '◇' };
+const GLYPH = { fire: '❄', neon: '◆', cryo: '◇', cave: '◈', abyss: '◉', sky: '✦' };
 const POWER_NAMES = { slow: 'Slow time', haste: 'Haste', shield: 'Shield', life: '+1 life' };
 const NEW_FOES = {
   1: '<b>Careful:</b> enemies crack the ice every time they hit it. Cracked ice breaks and melts back into open field.',
@@ -27,8 +26,7 @@ const game = new Game();
 const view = new Renderer(game, $('stage'));
 const sfx = new Sfx();
 
-let mode = store.get('perimeter.mode', 'auto');
-if (mode !== 'auto' && !FAMILIES.includes(mode)) mode = 'auto';
+const mode = 'auto'; // every level is a new world
 let theme = null;
 let current = 'title';
 
@@ -46,20 +44,19 @@ function applyTheme(T) {
 }
 
 function newWorld(fam) {
-  const f = fam === 'random' ? FAMILIES[(Math.random() * 3) | 0] : fam;
+  const pool = FAMILIES.filter(f => !theme || f !== theme.family);
+  const f = fam === 'random' ? pool[(Math.random() * pool.length) | 0] : fam;
   const T = generateTheme(f, (Math.random() * 1e9) | 0);
   applyTheme(T);
   if (current !== 'title') callout(T.world, 'small');
   sfx.ui();
 }
 
-function setMode(m) {
-  mode = m;
-  store.set('perimeter.mode', m);
-  document.querySelectorAll('.mode').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
-  applyTheme(m === 'auto' ? canonicalTheme('fire') : canonicalTheme(m));
+// Title screen shows one of the hand-tuned worlds, a different one each visit
+function titleTheme() {
+  const pool = FAMILIES.filter(f => !theme || f !== theme.family);
+  applyTheme(canonicalTheme(pool[(Math.random() * pool.length) | 0]));
 }
-document.querySelectorAll('.mode').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); sfx.unlock(); sfx.ui(); setMode(b.dataset.mode); }));
 document.querySelectorAll('button[data-fam]').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); sfx.unlock(); newWorld(b.dataset.fam); b.blur(); }));
 
 /* ---------------- screens ---------------- */
@@ -113,7 +110,7 @@ function nextLevel() {
 function toTitle() {
   hide();
   view.transition(() => {
-    setMode(mode);
+    titleTheme();
     game.attract(aspect());
     show('title');
     renderTitleBest();
@@ -140,19 +137,16 @@ function direction(dir) {
   if (current === 'over') return;
   if (game.state === 'paused') { game.resume(); hide(); }
   if (current === 'clear') { if (performance.now() - screenShownAt > 900) nextLevel(); return; }
-  if (game.state === 'playing' || game.state === 'dying') game.input(dir);
+  if (game.state === 'playing') game.input(dir);
 }
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const dir = KEYS[e.code];
   if (dir) { e.preventDefault(); direction(dir); return; }
-  if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
-    sfx.unlock();
-    const fam = FAMILIES[+e.code.slice(5) - 1];
-    if (current === 'title') setMode(fam); else newWorld(fam);
-    return;
-  }
-  if (e.code === 'KeyG') { sfx.unlock(); if (current === 'title') setMode('auto'); else newWorld('random'); return; }
+  // hidden shortcuts: 1-6 jump to a new world of that family, G to a random one
+  const dn = /^Digit([1-6])$/.exec(e.code);
+  if (dn) { sfx.unlock(); if (current === 'title') applyTheme(canonicalTheme(FAMILIES[dn[1] - 1])); else newWorld(FAMILIES[dn[1] - 1]); return; }
+  if (e.code === 'KeyG') { sfx.unlock(); if (current === 'title') titleTheme(); else newWorld('random'); return; }
   if (e.code === 'KeyP' || e.code === 'Escape') { e.preventDefault(); togglePause(); return; }
   if (e.code === 'KeyM') { sfx.unlock(); $('mute').textContent = sfx.toggleMute() ? '×' : '♪'; return; }
   if (e.code === 'Enter' || e.code === 'Space') {
@@ -200,7 +194,7 @@ function updateHud(force) {
     el.classList.remove('bump'); void el.offsetWidth; if (m > lastMult) el.classList.add('bump');
     lastMult = m;
   }
-  const goal = game.spec ? game.spec.goal : 75;
+  const goal = game.spec ? game.spec.goal : 90;
   const pct = Math.min(100, game.capturedPct);
   $('capbar').style.width = pct.toFixed(1) + '%';
   $('goaltick').style.left = goal + '%';
@@ -317,7 +311,7 @@ function renderTitleBest() {
 }
 
 /* ---------------- boot ---------------- */
-setMode(mode);
+applyTheme(canonicalTheme('fire'));
 game.attract(aspect());
 show('title');
 renderTitleBest();

@@ -34,11 +34,12 @@ export const ICE_VERT = /* glsl */`
 attribute float aFreeze;
 attribute float aSeed;
 attribute float aCrack;
+attribute float aOpen;
 uniform float uGameTime;
 uniform float uGrow;
 uniform float uHMax;
 uniform float uSink;
-varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack; varying float vOpen;
 float easeOutBack(float x){ float c1=1.9; float c3=c1+1.; return 1.+c3*pow(x-1.,3.)+c1*pow(x-1.,2.); }
 void main(){
   float age = uGameTime - aFreeze;
@@ -49,6 +50,7 @@ void main(){
   float sink = clamp(uSink * 1.6 - aSeed * 0.6, 0., 1.);
   p.y *= g * (1. - sink * sink) * (1. - 0.28 * aCrack);
   vCrack = aCrack;
+  vOpen = aOpen;
   p.xz *= age < 0. || sink > 0.99 ? 0. : mix(0.35, 1.0, min(1., t*2.5)) * (1. - sink * 0.5);
   vec4 wp = modelMatrix * instanceMatrix * vec4(p, 1.);
   vW = wp.xyz;
@@ -63,10 +65,11 @@ export const ICE_FRAG = /* glsl */`
 uniform vec3 uBase; uniform vec3 uTop; uniform vec3 uDeep; uniform vec3 uEdge; uniform vec3 uRim; uniform vec3 uFlash;
 uniform float uEdgeW; uniform float uEdgeI; uniform float uRimP; uniform float uRimI; uniform float uAlpha;
 uniform float uSpark; uniform float uTime; uniform float uFlashDecay; uniform vec3 uSunDir; uniform float uLightK;
-uniform float uEdgeDark;
-varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack;
+uniform float uEdgeDark; uniform float uContour; uniform float uTileI; uniform float uCap;
+varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vAge; varying float vSeed; varying float vT; varying float vHN; varying float vCrack; varying float vOpen;
 ${NOISE}
 ${LIGHTS}
+float bit(float m, float b) { return mod(floor(m / b + 0.01), 2.); }
 void main(){
   vec3 N = normalize(vN);
   vec3 V = normalize(cameraPosition - vW);
@@ -88,9 +91,28 @@ void main(){
   float ndl = max(dot(N, normalize(uSunDir)), 0.);
   col *= 0.5 + 0.7 * ndl;
   float fr = pow(1. - max(dot(N, V), 0.), uRimP);
+  // glossy flat cap on top of the blocks (reads as one solid slab instead of shimmering tiles)
+  if (uCap > 0.) {
+    float sheen = smoothstep(0.7, 1., sin((vW.x + vW.z) * 0.07 - uTime * 0.5) * 0.5 + 0.5);
+    float grad = 0.5 + 0.5 * sin(vW.x * 0.03 + vW.z * 0.02);
+    vec3 capCol = mix(uTop, mix(uTop, uRim, 0.35), grad) * (0.95 + 0.1 * vHN) + uEdge * sheen * 0.1;
+    col = mix(col, capCol, top * uCap);
+  }
   col += uRim * fr * uRimI;
-  col *= 1. - uEdgeDark * edge;
-  col += uEdge * edge * uEdgeI;
+  float tileEdge = edge * mix(1., uTileI, top);
+  col *= 1. - uEdgeDark * tileEdge;
+  col += uEdge * tileEdge * uEdgeI;
+  // bright outline only where the frozen region meets open field
+  if (vOpen > 0.5) {
+    float d = 1.;
+    if (bit(vOpen, 1.) > 0.5) d = min(d, vL.x + 0.5);
+    if (bit(vOpen, 2.) > 0.5) d = min(d, 0.5 - vL.x);
+    if (bit(vOpen, 4.) > 0.5) d = min(d, vL.z + 0.5);
+    if (bit(vOpen, 8.) > 0.5) d = min(d, 0.5 - vL.z);
+    float c = (1. - smoothstep(0., 0.14, d)) * top;
+    c = max(c, (1. - top) * smoothstep(0.36, 0.5, vL.y));
+    col += uEdge * c * uContour;
+  }
   col += pointLights(vW, N, uLightK) * (0.35 + 0.35 * top);
 #ifdef SPARKLE
   vec3 q = floor(vW * 5.);
@@ -251,6 +273,75 @@ void main(){
 }`,
 };
 
+// Crystal cave: bumpy dark stone with glowing mineral veins
+FLOOR_FRAG.cave = FLOOR_HEAD + /* glsl */`
+void main(){
+  vec2 p = vW.xz;
+  float m = fieldMask(p);
+  float n = fbm(p * 0.12);
+  float n2 = fbm(p * 0.45 + 7.);
+  float e = 0.35;
+  float hx = fbm((p + vec2(e, 0.)) * 0.45 + 7.) - n2, hz = fbm((p + vec2(0., e)) * 0.45 + 7.) - n2;
+  vec3 N = normalize(vec3(-hx * 3., 1., -hz * 3.));
+  vec3 col = mix(uA, uB, smoothstep(0.25, 0.8, n) * 0.8 + n2 * 0.3);
+  col *= 0.55 + 0.45 * dot(N, normalize(vec3(0.3, 1., 0.2)));
+  float v = fbm(p * 0.08 + vec2(3.1, 1.7));
+  float vein = 1. - smoothstep(0., 0.018, abs(v - 0.5));
+  float vein2 = 1. - smoothstep(0., 0.01, abs(fbm(p * 0.19 + 9.) - 0.5));
+  float pulse = 0.6 + 0.4 * sin(uTime * 1.2 + p.x * 0.08 + p.y * 0.05);
+  col += uC * (vein * pulse * 0.9 + vein2 * 0.25);
+  col += pointLights(vW, N, uLightK) * 0.5;
+  col *= mix(0.3, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+// Abyss: black tar, veins that pulse like a heartbeat, eyes opening in the dark
+FLOOR_FRAG.abyss = FLOOR_HEAD + /* glsl */`
+void main(){
+  vec2 p = vW.xz; float t = uTime;
+  float m = fieldMask(p);
+  float n = fbm(p * 0.05 + vec2(t * 0.01, -t * 0.008));
+  vec3 col = mix(uA, uB, smoothstep(0.35, 0.85, n));
+  float ph = fract(t / 1.4);
+  float beat = exp(-ph * 16.) + 0.6 * step(0.18, ph) * exp(-max(0., ph - 0.18) * 16.);
+  float vein = 1. - smoothstep(0., 0.02, abs(fbm(p * 0.06 + 11.) - 0.5));
+  float vein2 = 1. - smoothstep(0., 0.012, abs(fbm(p * 0.13 + 3.) - 0.5));
+  col += uC * (vein * (0.12 + 0.8 * beat) + vein2 * 0.06 * (0.3 + beat));
+  vec2 cell = floor(p / 9.);
+  float h = hash12(cell);
+  if (h > 0.84) {
+    vec2 c = (cell + 0.5 + (vec2(hash12(cell + 1.3), hash12(cell + 2.7)) - 0.5) * 0.5) * 9.;
+    vec2 d = p - c;
+    float open = smoothstep(0.55, 1., sin(t * (0.25 + h * 0.4) + h * 40.)) * step(0.05, fract(t * 0.21 + h * 7.));
+    open *= mix(0.2, 1., 1. - m);
+    for (int k = 0; k < 2; k++) {
+      vec2 q = d - vec2(k == 0 ? -0.9 : 0.9, 0.);
+      float r = length(q * vec2(1., 1. / max(0.05, open * 0.5)));
+      col += uC * 2.4 * smoothstep(0.5, 0.2, r) * open;
+      col += vec3(3., 2.2, 1.2) * smoothstep(0.13, 0., length(q)) * open;
+    }
+  }
+  col += pointLights(vW, vec3(0., 1., 0.), uLightK) * 0.3;
+  col *= mix(0.25, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+// Sky: a sea of clouds far below, lit by a low sun
+FLOOR_FRAG.sky = FLOOR_HEAD + /* glsl */`
+void main(){
+  vec2 p = vW.xz; float t = uTime;
+  float m = fieldMask(p);
+  vec2 q = p * 0.02 + vec2(t * 0.006, t * 0.003);
+  float c1 = fbm(q), c2 = fbm(q * 2.3 + 4.);
+  float cloud = smoothstep(0.32, 0.82, c1 * 0.7 + c2 * 0.45);
+  vec3 col = mix(uA, uB, cloud);
+  col += uC * pow(cloud, 3.) * 0.22;
+  col += uC * 0.1 * smoothstep(1., 0., length((p - vec2(-uField.x * 0.6, -uField.y * 0.7)) / uField));
+  col += pointLights(vW, vec3(0., 1., 0.), uLightK) * 0.25;
+  col *= mix(0.6, 1., m);
+  gl_FragColor = vec4(col, 1.);
+}`;
+
 /* ---------------- ENEMY ORBS ---------------- */
 export const ORB_VERT = /* glsl */`
 varying vec3 vN; varying vec3 vW; varying vec3 vP;
@@ -265,6 +356,7 @@ void main(){
 
 export const ORB_FRAG = /* glsl */`
 uniform vec3 uA; uniform vec3 uB; uniform vec3 uCore; uniform vec3 uIce; uniform float uTime; uniform float uFrozen; uniform float uSeed; uniform float uHit;
+uniform vec3 uLook;
 varying vec3 vN; varying vec3 vW; varying vec3 vP;
 ${NOISE}
 void main(){
@@ -286,6 +378,20 @@ void main(){
   col = mix(uA, uB, 0.5 + 0.5 * b) * (0.55 + n * 0.7);
   col += uCore * pow(fr, 1.5) * 1.6;
   col += uCore * pow(max(dot(N, V), 0.), 8.) * 0.6;
+#elif defined(STYLE_EYE)
+  // eyeball: pale veined sclera, glowing iris, black pupil that tracks the hero
+  vec3 P = normalize(vP);
+  float d = dot(P, normalize(uLook));
+  float veins = smoothstep(0.47, 0.5, fbm3(P * 5. + uSeed * 9.)) * smoothstep(0.55, 0.95, 1. - d);
+  vec3 sclera = uCore * (0.35 + 0.25 * max(dot(N, V), 0.));
+  sclera = mix(sclera, uA * 0.8, veins * 0.8);
+  float irisN = fbm3(P * 14. + uSeed * 3.);
+  vec3 iris = mix(uA, uB, irisN) * (1.4 + 1.2 * smoothstep(0.86, 0.95, d));
+  float pupilR = 0.965 - 0.012 * sin(uTime * 2. + uSeed * 10.);
+  col = sclera;
+  col = mix(col, iris, smoothstep(0.84, 0.86, d));
+  col = mix(col, vec3(0.01), smoothstep(pupilR - 0.006, pupilR, d));
+  col += uA * pow(fr, 2.) * 1.2;
 #else
   float n = fbm3(normalize(vP) * 2.5 + vec3(uTime * 0.4, uTime * 0.25, uSeed * 5.));
   float veins = smoothstep(0.48, 0.52, n) - smoothstep(0.52, 0.58, n);

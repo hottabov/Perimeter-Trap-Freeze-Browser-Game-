@@ -191,6 +191,14 @@ export class Sfx {
         this.tone({ f: this.note(pat[step % 8], -1), type: 'sawtooth', dur: 0.2, gain: 0.05, cutoff: 700, send: 0.05 });
       } else if (A.sonar) {
         if (step % 24 === 0) this.tone({ f: this.note(4, 3), type: 'sine', dur: 1.6, gain: 0.05, attack: 0.01, send: 0.9 });
+      } else if (A.drip) { // water dripping somewhere in the cave
+        if (Math.random() < 0.08) { const f = this.note((Math.random() * 5) | 0, 4); this.tone({ f, glideTo: f * 1.5, type: 'sine', dur: 0.12, gain: 0.05, send: 0.95 }); }
+      } else if (A.heartbeat) { // slow double heartbeat
+        const s = step % 10;
+        if (s === 0 || s === 2) this.tone({ f: 58, glideTo: 36, type: 'sine', dur: 0.22, gain: s === 0 ? 0.28 : 0.18, send: 0.1 });
+        if (Math.random() < 0.02) this.noise({ dur: 1.4, gain: 0.03, type: 'bandpass', f: 300 + Math.random() * 500, q: 8, attack: 0.5, send: 0.9 });
+      } else if (A.chimes) { // wind chimes
+        if (Math.random() < 0.12) this.tone({ f: this.note((Math.random() * 10) | 0, 3), type: 'sine', dur: 1.8, gain: 0.03, attack: 0.01, send: 0.9 });
       } else if (A.steam) { // crackling embers
         if (Math.random() < 0.3) this.noise({ dur: 0.03, gain: 0.03 + Math.random() * 0.04, type: 'bandpass', f: 2000 + Math.random() * 3000, q: 4, send: 0.2 });
       }

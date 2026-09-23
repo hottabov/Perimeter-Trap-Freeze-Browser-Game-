@@ -39,12 +39,18 @@ const NAMES = {
   fire: [['Ember', 'Cinder', 'Hearth', 'Ash', 'Frostfire', 'Kindle', 'Pyre', 'Rime'], ['Fjord', 'Tundra', 'Hollow', 'Lake', 'Reach', 'Mere', 'Barrens', 'Sound']],
   neon: [['Chrome', 'Laser', 'Synth', 'Pulse', 'Vapor', 'Turbo', 'Night', 'Prism'], ['Grid', 'Drive', 'Boulevard', 'Arcade', 'Sector', 'Highway', 'Circuit', 'Strip']],
   cryo: [['Void', 'Nebula', 'Quasar', 'Helix', 'Aurora', 'Zenith', 'Photon', 'Echo'], ['Lattice', 'Array', 'Drift', 'Sanctum', 'Veil', 'Spire', 'Expanse', 'Choir']],
+  cave: [['Echo', 'Hollow', 'Amethyst', 'Deep', 'Glimmer', 'Geode', 'Quartz', 'Silent'], ['Cavern', 'Grotto', 'Vault', 'Depths', 'Chasm', 'Mine', 'Warren', 'Undercroft']],
+  abyss: [['Hollow', 'Dread', 'Silent', 'Bleak', 'Crimson', 'Ashen', 'Grave', 'Whisper'], ['Abyss', 'Maw', 'Pit', 'Mire', 'Wastes', 'Hollows', 'Nether', 'Crypt']],
+  sky: [['Aurora', 'Zephyr', 'Halo', 'Seraph', 'Gilded', 'Cirrus', 'Solace', 'Lumen'], ['Heights', 'Spire', 'Firmament', 'Terrace', 'Isles', 'Reach', 'Choir', 'Canopy']],
 };
 
 const SCALES = {
   fire: [[0, 3, 5, 7, 10], [0, 2, 3, 7, 8], [0, 3, 5, 6, 10]],
   neon: [[0, 2, 3, 7, 8], [0, 3, 7, 10, 14], [0, 2, 5, 7, 9]],
   cryo: [[0, 5, 7, 10, 14], [0, 2, 7, 9, 14], [0, 4, 7, 11, 14]],
+  cave: [[0, 1, 5, 7, 8], [0, 3, 5, 7, 10], [0, 2, 3, 7, 8]],
+  abyss: [[0, 1, 6, 7, 10], [0, 1, 3, 6, 8], [0, 3, 6, 9, 11]],
+  sky: [[0, 2, 4, 7, 9], [0, 4, 7, 9, 11], [0, 2, 4, 7, 11]],
 };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -66,9 +72,15 @@ const CANON_UI = {
   fire: { ink: '#e8f3ff', muted: '#8fb0cc', accent: '#7fd0ff', warm: '#ff8a3d', panel: 'rgba(6,14,26,.55)', line: 'rgba(160,210,255,.18)', scrim: 'rgba(2,6,12,.55)' },
   neon: { ink: '#fdf2ff', muted: '#c49be6', accent: '#34f0ff', warm: '#ff2bd6', panel: 'rgba(20,4,34,.5)', line: 'rgba(255,43,214,.35)', scrim: 'rgba(8,0,16,.5)' },
   cryo: { ink: '#dffffb', muted: '#6fb8b0', accent: '#1ad6c0', warm: '#9a6bff', panel: 'rgba(2,12,18,.5)', line: 'rgba(26,214,192,.3)', scrim: 'rgba(0,4,8,.5)' },
+  cave: { ink: '#f1e8ff', muted: '#a797bf', accent: '#c29bff', warm: '#ffb13b', panel: 'rgba(12,8,18,.6)', line: 'rgba(194,155,255,.22)', scrim: 'rgba(3,2,6,.6)' },
+  abyss: { ink: '#f6e9e6', muted: '#a88a86', accent: '#ff4a55', warm: '#ff2a3a', panel: 'rgba(14,3,5,.62)', line: 'rgba(255,42,58,.28)', scrim: 'rgba(3,0,1,.65)' },
+  sky: { ink: '#ffffff', muted: '#e2ebfa', accent: '#ffe3a8', warm: '#ffc45c', panel: 'rgba(24,38,70,.45)', line: 'rgba(255,227,168,.4)', scrim: 'rgba(20,34,66,.45)' },
 };
-const CANON_NAMES = { fire: 'Ember Lake', neon: 'Chrome Grid', cryo: 'Void Lattice' };
-const CANON_HUES = { fire: { iceH: 205, warmH: 18, sparxH: 48 }, neon: { iceH: 185, warmH: 320, sparxH: 60 }, cryo: { iceH: 172, warmH: 265, sparxH: 350 } };
+const CANON_NAMES = { fire: 'Ember Lake', neon: 'Chrome Grid', cryo: 'Void Lattice', cave: 'Amethyst Grotto', abyss: 'Crimson Maw', sky: 'Gilded Heights' };
+const CANON_HUES = {
+  fire: { iceH: 205, warmH: 18, sparxH: 48 }, neon: { iceH: 185, warmH: 320, sparxH: 60 }, cryo: { iceH: 172, warmH: 265, sparxH: 350 },
+  cave: { iceH: 275, warmH: 35, sparxH: 160 }, abyss: { iceH: 355, warmH: 0, sparxH: 45 }, sky: { iceH: 40, warmH: 250, sparxH: 200 },
+};
 
 export function canonicalTheme(family) {
   const T = clone(THEMES[family]);
@@ -143,7 +155,71 @@ function genCryo(r) {
   return { T, P: { iceH, warmH: nebH, sparxH: 350 } };
 }
 
-const GEN = { fire: genFire, neon: genNeon, cryo: genCryo };
+function genCave(r) {
+  const T = clone(THEMES.cave);
+  const cH = r.pick([275, 150, 205, 320, 45, 185]) + r.jit(6);   // crystal
+  const vH = cH + r.pick([150, 180, -120]);                      // mineral veins
+  const fH = r.pick([38, 20, 90, 55]) + r.jit(5);                // fireflies
+  Object.assign(T.ice, {
+    base: hsl(cH, 55, 24), top: hsl(cH + 8, 62, 62 + r.jit(6)), deep: hsl(cH - 8, 70, 7), edge: hsl(cH + 10, 90, 86),
+    rim: hsl(cH + 20, 80, 62), flash: hdr(cH, 80, 70, 1.8), hMin: r.range(0.4, 0.7), hMax: r.range(2.2, 3.0), gap: r.range(0.88, 0.95),
+  });
+  T.floor = { ...T.floor, a: hsl(cH + 20, 20, 3), b: hsl(cH + 20, 12, 11 + r.jit(2)), c: hsl(vH, 85, 55) };
+  T.trail = { color: hdr(vH, 90, 55, 1.6), hot: hdr(vH, 70, 80, 1.8) };
+  T.hero = { ...T.hero, color: hdr(vH, 80, 80, 4), light: hsl(vH, 90, 75), spark: hdr(vH, 85, 62, 3) };
+  T.enemy = { ...T.enemy, a: hsl(fH, 100, 60), b: hsl(fH - 15, 100, 55), core: hsl(fH + 10, 100, 86), light: hsl(fH, 100, 60) };
+  T.boss = { ...T.boss, a: hsl(fH + 60, 100, 58), b: hsl(fH + 100, 100, 58), core: hsl(fH + 70, 100, 88), light: hsl(fH + 70, 100, 60) };
+  T.iceOrb = hsl(cH, 90, 85);
+  T.shards = { ...T.shards, color: hsl(cH, 60, 75), emissive: hsl(cH, 70, 42), alt: hsl(fH, 100, 60) };
+  T.burst = { kill: hdr(fH, 100, 60, 3), killAlt: hdr(cH, 85, 70, 3), steam: false, death: hdr(fH - 20, 100, 55, 3.2), capture: hdr(cH, 85, 70, 3) };
+  T.ambient = hsl(cH, 25, 16); T.dir = hsl(cH, 60, 85); T.clear = hsl(cH, 40, 1.5);
+  T.ui = { ink: hsl(cH, 80, 95), muted: hsl(cH, 20, 66), accent: hsl(cH, 85, 76), warm: hsl(fH, 100, 62), panel: hsla(cH, 40, 5, .6), line: hsla(cH, 80, 76, .22), scrim: hsla(cH, 50, 2, .6) };
+  return { T, P: { iceH: cH, warmH: fH, sparxH: vH } };
+}
+
+function genAbyss(r) {
+  const T = clone(THEMES.abyss);
+  const aH = r.pick([355, 280, 100, 18, 330]) + r.jit(5);   // accent glow
+  const iH = r.pick([aH, 50, aH + 20]);                     // iris
+  Object.assign(T.ice, {
+    base: hsl(aH, 30, 8), top: hsl(aH, 12, 13), deep: hsl(aH, 30, 2), edge: hsl(aH, 100, 55),
+    rim: hsl(aH, 90, 45), flash: hdr(aH, 100, 50, 2), hMin: r.range(0.8, 1.1), hMax: r.range(1.8, 2.4),
+  });
+  T.floor = { ...T.floor, a: hsl(aH, 60, 1.2), b: hsl(aH, 70, 6), c: hsl(aH, 100, 55) };
+  T.enemy = { ...T.enemy, a: hsl(iH, 100, 40), b: hsl(iH + 20, 100, 55), light: hsl(aH, 100, 55) };
+  T.boss = { ...T.boss, a: hsl(iH + 60, 100, 50), b: hsl(iH + 40, 100, 55), light: hsl(iH + 50, 100, 55) };
+  T.iceOrb = hsl(aH, 100, 65);
+  T.shards = { ...T.shards, color: hsl(aH, 30, 8), emissive: hsl(aH, 100, 50) };
+  T.burst = { kill: hdr(aH, 100, 55, 3.4), killAlt: [2.8, 2.4, 2.2], steam: false, death: hdr(aH, 100, 50, 3.5), capture: hdr(aH, 100, 55, 3) };
+  T.ambient = hsl(aH, 50, 9); T.dir = hsl(aH, 70, 80); T.clear = hsl(aH, 70, 1);
+  T.ui = { ink: hsl(aH, 40, 94), muted: hsl(aH, 15, 60), accent: hsl(aH, 100, 64), warm: hsl(aH, 100, 55), panel: hsla(aH, 60, 3, .62), line: hsla(aH, 100, 55, .28), scrim: hsla(aH, 80, 1, .65) };
+  return { T, P: { iceH: aH, warmH: iH, sparxH: aH + 60 } };
+}
+
+function genSky(r) {
+  const T = clone(THEMES.sky);
+  const sH = r.pick([212, 205, 25, 280, 190]) + r.jit(6);   // sky tint (day, dawn, dusk)
+  const gH = r.pick([42, 38, 330, 200]) + r.jit(4);         // trim: gold, rose, silver-blue
+  const stormH = r.pick([255, 230, 290, 200]) + r.jit(8);
+  const dusk = sH < 60 || sH > 250;
+  Object.assign(T.ice, {
+    base: hsl(sH, 18, 62), top: hsl(gH, 45, 94), deep: hsl(sH, 25, 40), edge: hsl(gH, 90, 68), rim: hsl(sH, 60, 86),
+    flash: hdr(gH, 90, 70, 1.6), hMin: r.range(0.5, 0.8), hMax: r.range(1.4, 1.9),
+  });
+  T.floor = { ...T.floor, a: hsl(sH, 50, dusk ? 20 : 26), b: hsl(sH + (dusk ? 10 : 0), 55, dusk ? 55 : 62), c: hsl(gH, 100, 82) };
+  T.trail = { color: hdr(gH, 100, 55, 2), hot: hdr(gH, 80, 80, 2.2) };
+  T.hero = { ...T.hero, color: hdr(gH, 100, 70, 4), light: hsl(gH, 100, 72), spark: hdr(gH, 100, 60, 3) };
+  T.enemy = { ...T.enemy, a: hsl(stormH, 55, 26), b: hsl(stormH - 25, 60, 20), core: hsl(stormH - 40, 100, 86), light: hsl(stormH - 40, 100, 72) };
+  T.boss = { ...T.boss, a: hsl(stormH + 60, 60, 26), b: hsl(stormH + 30, 60, 18), core: hsl(stormH + 70, 100, 88), light: hsl(stormH + 70, 100, 72) };
+  T.iceOrb = hsl(gH, 60, 92);
+  T.shards = { ...T.shards, color: hsl(gH, 45, 94), emissive: hsl(gH, 90, 60), alt: hsl(stormH - 40, 100, 75) };
+  T.burst = { kill: hdr(stormH - 40, 100, 75, 3), killAlt: hdr(gH, 100, 65, 3), steam: false, death: hdr(0, 90, 60, 3), capture: hdr(gH, 100, 70, 3) };
+  T.ambient = hsl(sH, 35, 55); T.dir = hsl(gH, 60, 92); T.clear = hsl(sH, 50, 16);
+  T.ui = { ink: '#ffffff', muted: hsl(sH, 50, 88), accent: hsl(gH, 100, 82), warm: hsl(gH, 100, 64), panel: hsla(sH, 45, 18, .45), line: hsla(gH, 100, 82, .4), scrim: hsla(sH, 50, 16, .45) };
+  return { T, P: { iceH: gH, warmH: stormH, sparxH: gH } };
+}
+
+const GEN = { fire: genFire, neon: genNeon, cryo: genCryo, cave: genCave, abyss: genAbyss, sky: genSky };
 
 export function generateTheme(family, seed) {
   const r = rng(seed * 2654435761 + family.length * 97);
@@ -157,12 +233,13 @@ export function generateTheme(family, seed) {
   return finish(T, P);
 }
 
-export const FAMILIES = ['fire', 'neon', 'cryo'];
+export const FAMILIES = ['fire', 'neon', 'cryo', 'cave', 'abyss', 'sky'];
 
 // Theme for a level. mode: 'auto' (new world every level) or a fixed family.
+// Levels 1-6 introduce each hand-tuned world once; after that every level is generated.
 export function themeForLevel(level, mode, runSeed) {
   if (mode === 'auto') {
-    if (level <= 3) return canonicalTheme(FAMILIES[level - 1]);
+    if (level <= 6) return canonicalTheme(FAMILIES[level - 1]);
     const r = rng(runSeed + level * 7919);
     // avoid repeating the previous level's family
     const prev = themeFamilyForAuto(level - 1, runSeed);
@@ -174,7 +251,7 @@ export function themeForLevel(level, mode, runSeed) {
 }
 
 function themeFamilyForAuto(level, runSeed) {
-  if (level <= 3) return FAMILIES[level - 1];
+  if (level <= 6) return FAMILIES[level - 1];
   const r = rng(runSeed + level * 7919);
   const prev = themeFamilyForAuto(level - 1, runSeed);
   return r.pick(FAMILIES.filter(f => f !== prev));

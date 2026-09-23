@@ -15,7 +15,37 @@ import {
 const hex = (h) => new THREE.Color(h);
 const hdr = (a, k = 1) => new THREE.Color(a[0] * k, a[1] * k, a[2] * k);
 const rnd = (a, b) => a + Math.random() * (b - a);
-const TILT = 0.34; // camera tilt from vertical, radians
+const TILT = 0.6;    // camera tilt from vertical, radians (steeper = more 3D)
+const FOLLOW = 0.14; // how far the camera drifts toward the hero (fraction of half-field)
+
+// Power-up icons drawn once on a canvas: hourglass, lightning, shield, heart
+const iconTextures = {};
+function getIconTexture(type) {
+  if (iconTextures[type]) return iconTextures[type];
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.translate(S / 2, S / 2); x.scale(S / 100, S / 100);
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  x.shadowColor = 'rgba(255,255,255,0.9)'; x.shadowBlur = 8;
+  x.fillStyle = '#fff'; x.strokeStyle = '#fff'; x.lineWidth = 7;
+  x.beginPath();
+  if (type === 'slow') { // hourglass
+    x.moveTo(-22, -32); x.lineTo(22, -32); x.lineTo(3, -2); x.lineTo(22, 32); x.lineTo(-22, 32); x.lineTo(-3, -2); x.closePath();
+    x.stroke();
+    x.beginPath(); x.moveTo(-12, 26); x.lineTo(12, 26); x.lineTo(0, 12); x.closePath(); x.fill();
+  } else if (type === 'haste') { // lightning bolt
+    x.moveTo(8, -36); x.lineTo(-20, 6); x.lineTo(-2, 6); x.lineTo(-10, 36); x.lineTo(20, -8); x.lineTo(2, -8); x.closePath(); x.fill();
+  } else if (type === 'shield') {
+    x.moveTo(0, -34); x.bezierCurveTo(12, -26, 24, -26, 28, -26); x.bezierCurveTo(30, 6, 18, 24, 0, 36);
+    x.bezierCurveTo(-18, 24, -30, 6, -28, -26); x.bezierCurveTo(-24, -26, -12, -26, 0, -34); x.closePath(); x.stroke();
+    x.beginPath(); x.moveTo(0, -20); x.lineTo(0, 24); x.stroke();
+  } else { // heart
+    x.moveTo(0, 32); x.bezierCurveTo(-40, 6, -30, -32, 0, -14); x.bezierCurveTo(30, -32, 40, 6, 0, 32); x.closePath(); x.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return (iconTextures[type] = tex);
+}
 
 let glowTexture = null;
 function getGlowTexture() {
@@ -168,7 +198,7 @@ export class Renderer {
     parent.appendChild(r.domElement);
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1, 4000);
+    this.camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 4000);
     this.U = {
       uTime: { value: 0 }, uGameTime: { value: 0 }, uSink: { value: 0 },
       uLightPos: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
@@ -178,7 +208,9 @@ export class Renderer {
     this.dir = new THREE.DirectionalLight(0xffffff, 1.4);
     this.scene.add(this.ambient, this.dir);
 
-    this.composer = new EffectComposer(r);
+    // MSAA on the composer target removes the shimmer on thin ice edges and grid lines
+    const rt = new THREE.WebGLRenderTarget(innerWidth * this.dpr, innerHeight * this.dpr, { type: THREE.HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(r, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1, 0.5, 0.5);
     this.composer.addPass(this.bloom);
@@ -284,6 +316,11 @@ export class Renderer {
     this.crackAttr = new THREE.InstancedBufferAttribute(g.iceDmg, 1);
     this.crackAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aCrack', this.crackAttr);
+    this.openMask = new Float32Array(n);
+    this.openAttr = new THREE.InstancedBufferAttribute(this.openMask, 1);
+    this.openAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aOpen', this.openAttr);
+    this.computeOpen();
     const defines = {};
     if (I.facets) defines.FACETS = '';
     if (I.sparkle) defines.SPARKLE = '';
@@ -297,6 +334,7 @@ export class Renderer {
         uAlpha: { value: I.alpha }, uSpark: { value: I.spark }, uFlashDecay: { value: I.flashDecay },
         uSunDir: { value: new THREE.Vector3(...T.sun) }, uLightK: { value: I.lightK },
         uHMax: { value: Math.max(I.hMax, 0.01) }, uEdgeDark: { value: I.edgeDark || 0 }, uSink: this.U.uSink,
+        uContour: { value: I.contour ?? 0.6 }, uTileI: { value: I.tileI ?? 1 }, uCap: { value: I.cap || 0 },
       },
       defines, vertexShader: ICE_VERT, fragmentShader: ICE_FRAG,
       transparent: !!I.holo, depthWrite: !I.holo, blending: I.holo ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -318,6 +356,23 @@ export class Renderer {
     }
     this.iceMesh = mesh;
     this.worldGroup.add(mesh);
+  }
+
+  // Per-cell bitmask of sides that face open field (1:-x 2:+x 4:-z 8:+z); drives the region outline
+  computeOpen() {
+    const g = this.game, W = g.W, H = g.H, c = g.cells, o = this.openMask;
+    if (!o || o.length !== W * H) return;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (c[i] !== SOLID) { o[i] = 0; continue; }
+      let m = 0;
+      if (x > 0 && c[i - 1] !== SOLID) m |= 1;
+      if (x < W - 1 && c[i + 1] !== SOLID) m |= 2;
+      if (y > 0 && c[i - W] !== SOLID) m |= 4;
+      if (y < H - 1 && c[i + W] !== SOLID) m |= 8;
+      o[i] = m;
+    }
+    if (this.openAttr) this.openAttr.needsUpdate = true;
   }
 
   buildTrail(T, g) {
@@ -383,6 +438,7 @@ export class Renderer {
         uTime: this.U.uTime, uA: { value: hex(T.a) }, uB: { value: hex(T.b) }, uCore: { value: hex(T.core) },
         uIce: { value: hex(this.theme.iceOrb) }, uFrozen: { value: 0 }, uSeed: { value: e.seed }, uHit: { value: 0 },
         uWobble: { value: style === 'BIO' ? 0.06 * e.r : style === 'FIRE' ? 0.035 * e.r : 0 },
+        uLook: { value: new THREE.Vector3(0, 1, 0) },
       },
       defines: { ['STYLE_' + style]: '' }, vertexShader: ORB_VERT, fragmentShader: ORB_FRAG,
     });
@@ -452,21 +508,37 @@ export class Renderer {
   makePowerupView(p) {
     const col = hex(this.theme.powerups[p.type]);
     const grp = new THREE.Group();
-    const geo = { slow: new THREE.IcosahedronGeometry(0.85, 0), haste: new THREE.TetrahedronGeometry(1.0, 0), shield: new THREE.OctahedronGeometry(0.95, 0), life: new THREE.DodecahedronGeometry(0.85, 0) }[p.type];
-    const gem = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.3, flatShading: true }));
-    gem.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: col.clone().multiplyScalar(3) })));
-    grp.add(gem);
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.6, 14, 16, 1, true), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.7), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    beam.position.y = 7;
-    grp.add(beam);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.3, 1.5, 48), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(2), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = -1.3;
+    const float = new THREE.Group();
+    grp.add(float);
+    // soft glowing core
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: col.clone().multiplyScalar(1.6), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    glow.scale.setScalar(3.2);
+    float.add(glow);
+    // faceted glass shell that turns slowly
+    const shellGeo = new THREE.IcosahedronGeometry(1.05, 0);
+    const shell = new THREE.Mesh(shellGeo, new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.35), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    shell.add(new THREE.LineSegments(new THREE.EdgesGeometry(shellGeo), new THREE.LineBasicMaterial({ color: col.clone().multiplyScalar(2.2), transparent: true, opacity: 0.9 })));
+    float.add(shell);
+    // icon, always facing the camera, drawn on top
+    const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: getIconTexture(p.type), color: new THREE.Color(1.5, 1.5, 1.5), transparent: true, depthTest: false, depthWrite: false }));
+    icon.scale.setScalar(1.45);
+    icon.renderOrder = 20;
+    float.add(icon);
+    // three motes orbiting the shell
+    const motes = [];
+    for (let k = 0; k < 3; k++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(3) }));
+      float.add(m); motes.push(m);
+    }
+    // landing ring on the floor
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 48), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(1.8), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06;
     grp.add(ring);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: col.clone().multiplyScalar(0.6), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-    halo.scale.setScalar(5);
-    grp.add(halo);
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.35), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.05;
+    grp.add(shadow);
     this.themeGroup.add(grp);
-    return { grp, gem, beam, ring, halo, p, col };
+    return { grp, float, glow, shell, icon, motes, ring, shadow, p, col, landed: false };
   }
 
   /* ---------- level transition ---------- */
@@ -489,17 +561,33 @@ export class Renderer {
     this.fitCamera();
   }
 
+  // Find the closest camera distance at which the whole field (plus room for the follow offset)
+  // projects inside the screen area between the HUD bars. Solved numerically because the
+  // steep tilt makes the near edge much wider on screen than the far edge.
   fitCamera() {
-    const g = this.game, cam = this.camera;
-    const vf = (cam.fov * Math.PI) / 180;
-    const hf = 2 * Math.atan(Math.tan(vf / 2) * cam.aspect);
-    const hudPx = innerWidth < 640 ? 160 : 140;
-    const frac = Math.max(0.55, (innerHeight - hudPx) / innerHeight);
-    const needW = (g.W / 2 + 2) / Math.tan(hf / 2);
-    const needH = ((g.H / 2 + 2) * Math.cos(TILT) + 2.5) / (Math.tan(vf / 2) * frac);
-    const dist = Math.max(needW, needH);
-    this.camDist = dist;
-    this.camBase.set(0, dist * Math.cos(TILT), dist * Math.sin(TILT));
+    const g = this.game;
+    const cam = this._fitCam ||= new THREE.PerspectiveCamera();
+    cam.fov = this.camera.fov; cam.aspect = this.camera.aspect; cam.near = 1; cam.far = 5000; cam.updateProjectionMatrix();
+    const topPx = innerWidth < 640 ? 84 : 74, botPx = innerWidth < 640 ? 96 : 70;
+    const yTop = 1 - (2 * topPx) / innerHeight, yBot = -1 + (2 * botPx) / innerHeight;
+    const ex = (g.W / 2 + 1.5) * (1 + FOLLOW), ez = (g.H / 2 + 1.5) * (1 + FOLLOW);
+    const pts = [];
+    for (const x of [-ex, ex]) for (const z of [-ez, ez]) for (const y of [0, 2]) pts.push(new THREE.Vector3(x, y, z));
+    const v = new THREE.Vector3();
+    const fits = (D) => {
+      cam.position.set(0, D * Math.cos(TILT), D * Math.sin(TILT));
+      cam.lookAt(0, 0, 0); cam.updateMatrixWorld();
+      for (const p of pts) {
+        v.copy(p).project(cam);
+        if (v.z > 1 || Math.abs(v.x) > 0.97 || v.y > yTop || v.y < yBot) return false;
+      }
+      return true;
+    };
+    let lo = 10, hi = 3000;
+    for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+    // vertical centring: the field is framed slightly low so the far edge clears the top HUD
+    this.camDist = hi;
+    this.camBase.set(0, hi * Math.cos(TILT), hi * Math.sin(TILT));
   }
 
   worldToScreen(cx, cy, y = 1) {
@@ -645,12 +733,14 @@ export class Renderer {
       }
       case 'iceBreak': {
         const c = hdr(T.burst.killAlt, 0.9);
+        const per = Math.max(2, Math.min(8, Math.floor(70 / d.cells.length)));
         for (const i of d.cells) {
           const x = i % g.W + 0.5 - W2, z = ((i / g.W) | 0) + 0.5 - H2, y = (this.heights[i] || 1) * 0.6;
-          this.shards.burst(x, y, z, 5, 6, 0);
-          P.burst(x, y, z, 8, c, 6, 0.3, 500, { up: 0.8, jitter: 0.4 });
+          this.shards.burst(x, y, z, per, 8, 0.15);
+          P.burst(x, y, z, 10, c, 7, 0.32, 550, { up: 0.9, jitter: 0.45 });
+          P.burst(x, 0.3, z, 3, new THREE.Color(0.25, 0.28, 0.32), 2, 1.4, 900, { up: 0.6, grav: 1, drag: 2, alpha: 0.35, grow: 1.5 });
         }
-        this.fx.shake += Math.min(0.35, d.cells.length * 0.08);
+        this.fx.shake += Math.min(0.6, 0.15 + d.cells.length * 0.05);
         break;
       }
       case 'sparxShatter': {
@@ -728,7 +818,7 @@ export class Renderer {
       }
     }
 
-    if (g.freezeDirty && this.freezeAttr) { this.freezeAttr.needsUpdate = true; g.freezeDirty = false; }
+    if (g.freezeDirty && this.freezeAttr) { this.freezeAttr.needsUpdate = true; g.freezeDirty = false; this.computeOpen(); }
     if (g.trailDirty && this.trailAttr) { this.trailAttr.needsUpdate = true; g.trailDirty = false; }
     if (g.crackDirty && this.crackAttr) { this.crackAttr.needsUpdate = true; g.crackDirty = false; }
 
@@ -841,16 +931,34 @@ export class Renderer {
     const v = this.puView;
     const x = p.x + 0.5 - g.W / 2, z = p.y + 0.5 - g.H / 2;
     const age = g.t - p.spawnAt, left = p.expireAt - g.t;
-    const pop = Math.min(1, age / 350);
-    const blink = left < 3000 ? (Math.floor(left / 120) % 2 ? 0.35 : 1) : 1;
-    v.grp.position.set(x, 1.4 + Math.sin(tt * 2.4) * 0.25, z);
-    v.grp.scale.setScalar(pop * (1 + Math.sin(tt * 4) * 0.05));
-    v.gem.rotation.y = tt * 1.6; v.gem.rotation.x = Math.sin(tt * 0.9) * 0.4;
-    v.ring.scale.setScalar(1 + ((tt * 0.8) % 1) * 0.8);
-    v.ring.material.opacity = 0.8 * (1 - ((tt * 0.8) % 1)) * blink;
-    v.beam.material.opacity = 0.22 * blink;
-    v.halo.material.opacity = blink;
-    if (this.li < 8) { this.U.uLightPos.value[this.li].set(x, 2.2, z, 2.2 * blink); this.U.uLightCol.value[this.li].copy(v.col); this.li++; }
+    // drop in from above with a small bounce, then hover
+    const drop = Math.min(1, age / 550);
+    const bounce = drop < 1 ? (1 - drop) * (1 - drop) * 9 : 0;
+    const hover = 1.25 + Math.sin(tt * 2.2) * 0.14;
+    if (drop >= 1 && !v.landed) {
+      v.landed = true;
+      this.particles.burst(x, 0.4, z, 30, v.col.clone().multiplyScalar(2.5), 7, 0.3, 600, { up: 0.5, grav: -6 });
+    }
+    // fade out over the last 3 s: blink faster as time runs out
+    const warn = left < 3000 ? 0.55 + 0.45 * Math.cos(tt * (8 + (3000 - left) / 200)) : 1;
+    const shrink = left < 400 ? Math.max(0.01, left / 400) : 1;
+    v.grp.position.set(x, 0, z);
+    v.grp.scale.setScalar(2);
+    v.float.position.y = hover + bounce;
+    v.float.scale.setScalar(Math.min(1, 0.4 + drop) * shrink);
+    v.shell.rotation.y = tt * 0.9; v.shell.rotation.x = tt * 0.4;
+    v.glow.material.opacity = 0.85 * warn;
+    v.glow.scale.setScalar(3 + Math.sin(tt * 5) * 0.25);
+    v.icon.material.opacity = warn;
+    v.motes.forEach((m, k) => {
+      const a = tt * 2.4 + (k * Math.PI * 2) / 3;
+      m.position.set(Math.cos(a) * 1.45, Math.sin(a * 1.3) * 0.35, Math.sin(a) * 1.45);
+    });
+    const rp = (tt * 0.7) % 1;
+    v.ring.scale.setScalar(0.8 + rp * 1.2);
+    v.ring.material.opacity = 0.7 * (1 - rp) * warn * (v.landed ? 1 : 0);
+    v.shadow.material.opacity = 0.45 * warn * drop;
+    if (this.li < 8) { this.U.uLightPos.value[this.li].set(x, hover * 2 + 0.5, z, 2.4 * warn); this.U.uLightCol.value[this.li].copy(v.col); this.li++; }
   }
 
   updateEnemies(realDt, gameDt) {
@@ -881,6 +989,15 @@ export class Renderer {
       // shape per type
       const sc = e.r / v.r0;
       v.body.scale.setScalar(sc);
+      if (v.mat.defines.STYLE_EYE !== undefined) {
+        // eyes watch the hero (tilted up toward the camera); convert to the body's local frame
+        const hp = g.heroRenderPos();
+        let lx = hp.x - e.x, lz = hp.y - e.y;
+        const ln = Math.hypot(lx, lz) || 1; lx /= ln; lz /= ln;
+        const ry = e.type === 'hunter' ? -Math.atan2(e.vy, e.vx) : 0;
+        const c = Math.cos(-ry), s = Math.sin(-ry);
+        v.mat.uniforms.uLook.value.set(lx * c + lz * s, 1.1, -lx * s + lz * c).normalize();
+      }
       if (e.type === 'hunter') {
         v.body.rotation.y = -Math.atan2(e.vy, e.vx);
         const hunt = e.hunting ? 1 : 0;
@@ -927,21 +1044,32 @@ export class Renderer {
     const g = this.game, cam = this.camera, fx = this.fx;
     const hp = g.heroRenderPos();
     const tt = this.U.uTime.value;
-    const follow = g.state === 'title' ? 0 : 0.04;
-    const fx_ = (hp.x - g.W / 2) * follow, fz = (hp.y - g.H / 2) * follow;
-    this.camFollow.x += (fx_ - this.camFollow.x) * (1 - Math.exp(-realDt / 400));
-    this.camFollow.z += (fz - this.camFollow.z) * (1 - Math.exp(-realDt / 400));
-    const idle = g.state === 'title' ? 1 : 0;
-    const swayX = Math.sin(tt * 0.25) * this.camDist * 0.03 * idle;
+    const title = g.state === 'title';
+    const follow = title ? 0 : FOLLOW;
+    // target drifts toward the hero; the camera also orbits a little around it (parallax)
+    const nx = (hp.x - g.W / 2) / (g.W / 2), nz = (hp.y - g.H / 2) / (g.H / 2);
+    const tx = nx * (g.W / 2) * follow, tz = nz * (g.H / 2) * follow;
+    const k = 1 - Math.exp(-realDt / 260);
+    this.camFollow.x += (tx - this.camFollow.x) * k;
+    this.camFollow.z += (tz - this.camFollow.z) * k;
+    const wantYaw = title ? Math.sin(tt * 0.18) * 0.22 : nx * 0.1;
+    const wantPitch = title ? 0 : -nz * 0.05;
+    this.camYaw = (this.camYaw || 0) + (wantYaw - (this.camYaw || 0)) * (1 - Math.exp(-realDt / 500));
+    this.camPitch = (this.camPitch || 0) + (wantPitch - (this.camPitch || 0)) * (1 - Math.exp(-realDt / 500));
+    // slight push-in while a line is being drawn
+    const carveK = g.hero && g.hero.carving ? 1 : 0;
+    this.camCarve = (this.camCarve || 0) + (carveK - (this.camCarve || 0)) * (1 - Math.exp(-realDt / 400));
     fx.shake = Math.min(3, fx.shake) * Math.exp(-realDt / 170);
     fx.punch *= Math.exp(-realDt / 260);
     const sh = fx.shake * 0.6;
-    const dolly = 1 - fx.punch * 0.035 + (this.U.uSink.value * 0.04);
+    const dolly = 1 - fx.punch * 0.035 - this.camCarve * 0.035 + (this.U.uSink.value * 0.05);
+    const D = this.camDist * dolly, tilt = TILT + this.camPitch;
+    const sy = Math.sin(this.camYaw), cy = Math.cos(this.camYaw);
     cam.position.set(
-      this.camBase.x * dolly + this.camFollow.x + swayX + rnd(-sh, sh),
-      this.camBase.y * dolly + rnd(-sh, sh) * 0.5,
-      this.camBase.z * dolly + this.camFollow.z + rnd(-sh, sh),
+      this.camFollow.x + D * Math.sin(tilt) * sy + rnd(-sh, sh),
+      D * Math.cos(tilt) + rnd(-sh, sh) * 0.5,
+      this.camFollow.z + D * Math.sin(tilt) * cy + rnd(-sh, sh),
     );
-    cam.lookAt(this.camFollow.x + swayX * 0.3, 0, this.camFollow.z);
+    cam.lookAt(this.camFollow.x, 0, this.camFollow.z);
   }
 }

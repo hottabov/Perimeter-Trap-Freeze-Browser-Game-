@@ -1,7 +1,7 @@
 // Level design: enemy mix, obstacles and goals. Deterministic per (level, runSeed).
 import { rng } from './themegen.js';
 
-export const GOAL_BASE = 75;
+export const GOAL_BASE = 90;
 
 export function levelSpec(level) {
   const L = level;
@@ -14,7 +14,7 @@ export function levelSpec(level) {
     boss: L % 5 === 0,
     bossHp: 3 + Math.floor(L / 10),
     speed: Math.min(1.6, 1 + (L - 1) * 0.045),
-    goal: Math.min(82, GOAL_BASE + Math.floor((L - 1) / 4)),
+    goal: GOAL_BASE,
     layout: layoutFor(L),
     par: 60 + L * 8, // seconds for the time star
   };
