@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Perimeter Visual Prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Mono:wght@400;600&family=Major+Mono+Display&family=Monoton&family=Outfit:wght@400;600;800&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #e8f3ff; --muted: #8fb0cc; --accent: #7fd0ff; --warm: #ff8a3d;
+    --panel: rgba(6, 14, 26, .55); --line: rgba(160, 210, 255, .18); --scrim: rgba(2, 6, 12, .55);
+    --display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+    --ui: "Outfit", ui-sans-serif, system-ui, sans-serif;
+    --title-size: clamp(64px, 13vw, 168px); --title-track: -0.02em; --title-case: none;
+    --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  :root[data-theme="neon"] {
+    --ink: #fdf2ff; --muted: #c49be6; --accent: #34f0ff; --warm: #ff2bd6;
+    --panel: rgba(20, 4, 34, .5); --line: rgba(255, 43, 214, .35); --scrim: rgba(8, 0, 16, .5);
+    --display: "Monoton", "Chakra Petch", system-ui, sans-serif;
+    --ui: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+    --title-size: clamp(46px, 10vw, 128px); --title-track: 0.02em; --title-case: uppercase;
+  }
+  :root[data-theme="cryo"] {
+    --ink: #dffffb; --muted: #6fb8b0; --accent: #1ad6c0; --warm: #9a6bff;
+    --panel: rgba(2, 12, 18, .5); --line: rgba(26, 214, 192, .3); --scrim: rgba(0, 4, 8, .5);
+    --display: "Major Mono Display", "IBM Plex Mono", ui-monospace, monospace;
+    --ui: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --title-size: clamp(44px, 9.5vw, 120px); --title-track: 0.04em; --title-case: lowercase;
+  }
+  html, body { height: 100%; margin: 0; background: #02040a; overflow: hidden; }
+  body { color: var(--ink); font-family: var(--ui); -webkit-font-smoothing: antialiased; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* ---------- HUD ---------- */
+  .hud { position: fixed; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); pointer-events: none; z-index: 5;
+    transition: opacity .4s ease; }
+  .hud.top { top: 0; padding-top: calc(var(--safe-t) + 14px); }
+  .hud.bottom { bottom: 0; padding-bottom: calc(var(--safe-b) + 14px); }
+  body.is-title .hud { opacity: 0; }
+  .stat { display: flex; flex-direction: column; gap: 2px; min-width: 88px; }
+  .stat .lbl { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .stat .val { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .score { text-align: center; }
+  .score .val { font-size: clamp(26px, 4vw, 40px); font-weight: 800; letter-spacing: .02em; text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 50%, transparent); }
+  :root[data-theme="fire"] .score .val { font-family: var(--display); font-style: italic; font-weight: 600; font-size: clamp(30px, 4.6vw, 48px); }
+  .lives { text-align: right; align-items: flex-end; }
+  .lives .val { color: var(--accent); letter-spacing: .25em; text-shadow: 0 0 12px var(--accent); }
+  .meter { display: flex; align-items: center; gap: 10px; }
+  .meter .bar { width: clamp(90px, 16vw, 180px); height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--warm)); box-shadow: 0 0 10px var(--accent); transition: width .5s cubic-bezier(.2, .9, .2, 1.2); }
+  .meter span { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .switch { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); pointer-events: auto; }
+  .switch button { all: unset; cursor: pointer; font-size: 12px; letter-spacing: .06em; padding: 7px 12px; border-radius: 999px; color: var(--muted); white-space: nowrap; }
+  .switch button kbd { font-family: var(--ui); opacity: .55; margin-right: 6px; }
+  .switch button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .switch button:focus-visible { outline: 2px solid var(--accent); }
+  .icon-btn { all: unset; cursor: pointer; pointer-events: auto; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); font-size: 15px; }
+  .right-tools { display: flex; gap: 8px; align-items: center; }
+  .hint { font-size: 12px; color: var(--muted); letter-spacing: .04em; opacity: .8; }
+
+  /* ---------- screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: calc(var(--safe-t) + 16px) 16px calc(var(--safe-b) + 16px);
+    background: radial-gradient(ellipse at center, var(--scrim), transparent 75%); transition: opacity .35s ease; }
+  .screen[hidden] { display: none !important; }
+  .panel { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; max-width: 760px; }
+  .eyebrow { font-size: 12px; letter-spacing: .32em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: var(--title-size); line-height: .9; letter-spacing: var(--title-track); text-transform: var(--title-case); text-wrap: balance; }
+  :root[data-theme="fire"] h1 { font-style: italic; font-weight: 600;
+    background: linear-gradient(180deg, #ffffff 10%, #bfe8ff 55%, #5aa8e0 95%); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 28px rgba(120, 200, 255, .35)); }
+  :root[data-theme="neon"] h1 { color: #ffd6f6; text-shadow: 0 0 6px #fff, 0 0 18px #ff2bd6, 0 0 42px #ff2bd6, 0 0 80px #b01ab0; }
+  :root[data-theme="cryo"] h1 { color: #c9fff7; text-shadow: -2px 0 rgba(255, 60, 120, .55), 2px 0 rgba(60, 200, 255, .55), 0 0 30px rgba(26, 214, 192, .6); }
+  .sub { margin: 0; font-size: 15px; letter-spacing: .4em; text-transform: uppercase; color: var(--warm); }
+  :root[data-theme="fire"] .sub { text-shadow: 0 0 14px rgba(255, 120, 30, .8); }
+  .lead { margin: 4px 0 0; font-size: 16px; color: var(--muted); max-width: 46ch; line-height: 1.5; }
+  .cta { all: unset; cursor: pointer; margin-top: 10px; padding: 14px 34px; border-radius: 999px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 14px;
+    color: #031018; background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, white), 0 0 34px color-mix(in srgb, var(--accent) 60%, transparent); transition: transform .15s ease; }
+  .cta:hover { transform: translateY(-2px) scale(1.02); }
+  .cta:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  .styles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; width: min(680px, 100%); }
+  .style-card { all: unset; cursor: pointer; text-align: left; padding: 12px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 4px; transition: border-color .2s, transform .2s; }
+  .style-card:hover { transform: translateY(-2px); }
+  .style-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .style-card b { font-size: 14px; letter-spacing: .04em; }
+  .style-card small { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .style-card kbd { font-family: var(--ui); font-size: 11px; color: var(--accent); }
+  .keys { margin-top: 14px; font-size: 12px; color: var(--muted); letter-spacing: .05em; line-height: 1.8; }
+  .keys kbd { font-family: var(--ui); padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--panel); }
+  .results { display: flex; gap: 28px; margin-top: 6px; }
+  .results div { display: flex; flex-direction: column; gap: 2px; }
+  .results .lbl { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  .results .val { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .screen h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(40px, 7vw, 84px); line-height: 1; text-transform: var(--title-case); color: var(--ink); }
+  :root[data-theme="fire"] .screen h2 { font-style: italic; font-weight: 600; }
+  :root[data-theme="neon"] .screen h2 { text-shadow: 0 0 16px #ff2bd6, 0 0 40px #ff2bd6; }
+
+  /* ---------- popups ---------- */
+  #popups { position: fixed; inset: 0; pointer-events: none; z-index: 6; overflow: hidden; }
+  .pop { position: absolute; transform: translate(-50%, -50%); font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap;
+    color: var(--ink); text-shadow: 0 0 12px var(--accent), 0 2px 0 rgba(0, 0, 0, .5); animation: rise 1.1s cubic-bezier(.2, .8, .2, 1) forwards; }
+  .pop.kill { font-size: 24px; color: #fff; text-shadow: 0 0 16px var(--warm), 0 0 30px var(--warm); }
+  .callout { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); font-family: var(--display); font-size: clamp(40px, 8vw, 96px); white-space: nowrap;
+    text-transform: var(--title-case); color: var(--ink); text-shadow: 0 0 24px var(--accent), 0 0 60px var(--accent); animation: slam 1.5s cubic-bezier(.2, .9, .2, 1) forwards; }
+  :root[data-theme="fire"] .callout { font-style: italic; font-weight: 600; text-shadow: 0 0 24px var(--warm), 0 0 60px rgba(255, 90, 0, .6); }
+  @keyframes rise { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -70%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); } }
+  @keyframes slam { 0% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); letter-spacing: .3em; } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); letter-spacing: .02em; } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -62%) scale(.96); } }
+  .fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; transition: opacity .35s ease; }
+  .fade.on { opacity: 1; }
+  #err { position: fixed; inset: auto 16px 16px 16px; z-index: 20; color: #ffb4b4; font: 13px ui-monospace, monospace; }
+
+  @media (max-width: 720px) {
+    .hint, .switch button span { display: none; }
+    .styles { grid-template-columns: 1fr; }
+    .style-card small { display: none; }
+    .stat { min-width: 64px; }
+    .stat .val { font-size: 18px; }
+    .results { gap: 18px; }
+  }
+  .keys.touch { display: none; }
+  @media (pointer: coarse) { .keys.desk { display: none; } .keys.touch { display: block; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pop, .callout { animation-duration: .01s; }
+  }
+</style>
+
+<div id="stage"></div>
+
+<header class="hud top" aria-live="polite">
+  <div class="stat"><span class="lbl">Level</span><span class="val" id="lvl">01</span></div>
+  <div class="stat score"><span class="lbl">Score</span><span class="val" id="score">0</span></div>
+  <div class="stat lives"><span class="lbl">Lives</span><span class="val" id="lives"></span></div>
+</header>
+
+<footer class="hud bottom">
+  <div class="meter" title="Frozen area"><div class="bar"><i id="capbar"></i></div><span id="cap">0% frozen</span></div>
+  <div class="hint">Arrows / WASD · P pause · M sound</div>
+  <div class="right-tools">
+    <div class="switch" role="group" aria-label="Visual style">
+      <button data-theme="fire"><kbd>1</kbd><span>Fire &amp; Ice</span></button>
+      <button data-theme="neon"><kbd>2</kbd><span>Neon Glacier</span></button>
+      <button data-theme="cryo"><kbd>3</kbd><span>Cryo Void</span></button>
+    </div>
+    <button class="icon-btn" id="mute" aria-label="Toggle sound">♪</button>
+  </div>
+</footer>
+
+<div id="popups"></div>
+
+<section class="screen" id="screen-title">
+  <div class="panel">
+    <div class="eyebrow" id="theme-name">Fire &amp; Ice</div>
+    <h1>Perimeter</h1>
+    <p class="sub">Trap &amp; Freeze</p>
+    <p class="lead">Cut across the field. Close the line and the smaller side turns to ice, and anything inside it shatters.</p>
+    <button class="cta" id="play">Play</button>
+    <div class="styles" role="group" aria-label="Choose a visual style">
+      <button class="style-card" data-theme="fire"><kbd>1</kbd><b>Fire &amp; Ice</b><small>Night lake, ice columns, burning embers</small></button>
+      <button class="style-card" data-theme="neon"><kbd>2</kbd><b>Neon Glacier</b><small>Glass ice tiles on a synthwave grid</small></button>
+      <button class="style-card" data-theme="cryo"><kbd>3</kbd><b>Cryo Void</b><small>Holographic crystal lattice in deep space</small></button>
+    </div>
+    <div class="keys desk"><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> or WASD to move · <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> switch style any time</div>
+    <div class="keys touch">Swipe anywhere to steer · switch style any time below</div>
+  </div>
+</section>
+
+<section class="screen" id="screen-pause" hidden>
+  <div class="panel">
+    <div class="eyebrow">Paused</div>
+    <h2>Hold still</h2>
+    <button class="cta" id="resume">Resume</button>
+    <div class="keys">Press <kbd>P</kbd> or any arrow to continue</div>
+  </div>
+</section>
+
+<section class="screen" id="screen-clear" hidden>
+  <div class="panel">
+    <div class="eyebrow" id="clear-eyebrow">Level 01</div>
+    <h2>Field frozen</h2>
+    <div class="results">
+      <div><span class="lbl">Bonus</span><span class="val" id="clear-bonus">0</span></div>
+      <div><span class="lbl">Score</span><span class="val" id="clear-score">0</span></div>
+    </div>
+    <button class="cta" id="next">Next level</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-over" hidden>
+  <div class="panel">
+    <div class="eyebrow">Game over</div>
+    <h2>Thawed out</h2>
+    <div class="results">
+      <div><span class="lbl">Score</span><span class="val" id="over-score">0</span></div>
+      <div><span class="lbl">Level</span><span class="val" id="over-level">1</span></div>
+      <div><span class="lbl">Best</span><span class="val" id="over-best">0</span></div>
+    </div>
+    <button class="cta" id="again">Play again</button>
+  </div>
+</section>
+
+<div class="fade" id="fade"></div>
+<div id="err" role="alert"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="js/main.js"></script>
